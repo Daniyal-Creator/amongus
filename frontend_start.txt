@@ -1,0 +1,53 @@
+docker-compose : time="
+2026-04-13T13:36:51+07:
+00" level=warning 
+msg="No services to 
+build"
+At line:1 char:1
++ docker-compose -f inf
+ra/docker-compose.yml 
+up frontend 2>&1 | 
+Out-Fil ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (time="2026-04   
+ -1...vices to buil    
+d":String) [], Rem    
+oteException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+ Container infra-db-1 
+Running 
+ Container 
+infra-backend-1 
+Running 
+Attaching to frontend-1
+ Container infra-db-1 
+Waiting 
+ Container infra-db-1 
+Healthy 
+ Container 
+infra-backend-1 
+Waiting 
+ Container 
+infra-backend-1 
+Healthy 
+ Container 
+infra-frontend-1 
+Starting 
+Error response from 
+daemon: ports are not 
+available: exposing 
+port TCP 0.0.0.0:3000 
+-> 127.0.0.1:0: listen 
+tcp 0.0.0.0:3000: 
+bind: Only one usage 
+of each socket address 
+(protocol/network 
+address/port) is 
+normally permitted.

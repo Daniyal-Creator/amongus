@@ -1,0 +1,4 @@
+??? Next.js 16.2.2
+- Local:         http://231664adcc76:3000
+- Network:       http://231664adcc76:3000
+??? Ready in 0ms

@@ -1,0 +1,1 @@
+{"playerId":"a8977323-d976-4559-82da-c74bf6d50a0f","lobby":{"id":"90b38670-7ec6-43a8-957e-9c99f9609a47","code":"QE5BF2","mode":"standard","maxPlayers":4,"status":"waiting","hostPlayerId":"a8977323-d976-4559-82da-c74bf6d50a0f","players":[{"id":"a8977323-d976-4559-82da-c74bf6d50a0f","name":"TestHost","title":"Host / Frontend Fixer","color":"#14f59b","isReady":true,"isHost":true}]}}

@@ -1,0 +1,10 @@
+infra-frontend-1 Created
+infra-backend-1 Up About a minute (healthy)
+infra-db-1 Up 4 minutes (healthy)
+calorie-db Exited (255) 2 months ago
+count_calories_db Up 27 minutes (healthy)
+clipae-server-1 Exited (255) 2 months ago
+clipae-worker-1 Exited (255) 2 months ago
+clipae-client-1 Exited (255) 2 months ago
+clipae-postgres-1 Exited (0) 2 months ago
+clipae-redis-1 Exited (255) 2 months ago

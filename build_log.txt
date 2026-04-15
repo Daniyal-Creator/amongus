@@ -1,0 +1,139 @@
+﻿docker-compose :  
+Image infra-frontend 
+Building 
+At line:1 char:1
++ docker-compose -f inf
+ra/docker-compose.yml 
+build 2>&1 | Out-File 
+-Enc ...
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: ( Image infra-   
+ frontend Building     
+:String) [], Remot    
+eException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+ Image infra-backend 
+Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.21kB done
+#1 DONE 0.0s
+
+#2 [backend internal] load build definition from Dockerfile
+#2 transferring dockerfile: 508B 0.0s done
+#2 DONE 0.0s
+
+#3 [frontend internal] load build definition from Dockerfile
+#3 transferring dockerfile: 609B done
+#3 DONE 0.0s
+
+#4 [frontend internal] load metadata for docker.io/library/node:22-alpine
+#4 DONE 0.9s
+
+#5 [backend internal] load .dockerignore
+#5 transferring context: 72B done
+#5 DONE 0.0s
+
+#6 [frontend internal] load .dockerignore
+#6 transferring context: 73B done
+#6 DONE 0.0s
+
+#7 [frontend deps 1/4] FROM docker.io/library/node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3
+#7 resolve docker.io/library/node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3 0.0s done
+#7 DONE 0.0s
+
+#8 [backend internal] load build context
+#8 transferring context: 354B done
+#8 DONE 0.0s
+
+#9 [backend builder 4/5] COPY . .
+#9 CACHED
+
+#10 [backend deps 3/4] COPY package.json package-lock.json* ./
+#10 CACHED
+
+#11 [backend builder 3/5] COPY --from=deps /app/node_modules ./node_modules
+#11 CACHED
+
+#12 [backend runner 3/5] COPY --from=builder /app/dist ./dist
+#12 CACHED
+
+#13 [backend builder 5/5] RUN npm run build
+#13 CACHED
+
+#14 [backend deps 4/4] RUN npm install
+#14 CACHED
+
+#15 [backend runner 4/5] COPY --from=builder /app/package.json ./package.json
+#15 CACHED
+
+#16 [backend runner 5/5] COPY --from=deps /app/node_modules ./node_modules
+#16 CACHED
+
+#17 [frontend internal] load build context
+#17 transferring context: 13.34kB 0.0s done
+#17 DONE 0.0s
+
+#18 [frontend builder 4/5] COPY . .
+#18 CACHED
+
+#19 [frontend runner 4/5] COPY --from=builder /app/.next/static ./.next/static
+#19 CACHED
+
+#20 [frontend builder 5/5] RUN npm run build
+#20 CACHED
+
+#21 [frontend deps 2/4] WORKDIR /app
+#21 CACHED
+
+#22 [frontend builder 3/5] COPY --from=deps /app/node_modules ./node_modules
+#22 CACHED
+
+#23 [frontend deps 3/4] COPY package.json package-lock.json ./
+#23 CACHED
+
+#24 [frontend deps 4/4] RUN npm ci
+#24 CACHED
+
+#25 [frontend runner 3/5] COPY --from=builder /app/.next/standalone ./
+#25 CACHED
+
+#26 [frontend runner 5/5] COPY --from=builder /app/public ./public
+#26 CACHED
+
+#27 [frontend] exporting to image
+#27 exporting layers done
+#27 exporting manifest sha256:644bdbad14f6882a2bb6253e4b4c122f70df299b7e1436b314ce0ff2b6696a99 done
+#27 exporting config sha256:97ae3de1bdd184b7ebfea704b8869bf877d1b95ae3cd70f9b6719b856c031573 done
+#27 exporting attestation manifest sha256:c4533943b5bdbe9f7969ffe4fb1bd8c28489ced296d6a2637011f492d6a4f9dc
+#27 exporting attestation manifest sha256:c4533943b5bdbe9f7969ffe4fb1bd8c28489ced296d6a2637011f492d6a4f9dc 0.0s done
+#27 exporting manifest list sha256:3ace0b96a2fb9857ad078aa1b24b2014afc0c1bc3b407cee1c52f84143861d84 0.0s done
+#27 naming to docker.io/library/infra-frontend:latest done
+#27 unpacking to docker.io/library/infra-frontend:latest done
+#27 DONE 0.1s
+
+#28 [backend] exporting to image
+#28 exporting layers done
+#28 exporting manifest sha256:6183fe0bc8b5727612ddd7da8295c3204d990115340b620080588cde00da231c done
+#28 exporting config sha256:62a885eb5c28d1eb5fc9d56c395aaf9a633a742ec82c3a0077d9f16e707a8804 done
+#28 exporting attestation manifest sha256:a0e00b8675694eb58e7c6e10ffaba52d493cdbf5d198bfc9d0a1589d98bc012f 0.0s done
+#28 exporting manifest list sha256:00e6d2c2d3eee139badb00e31330bf2d20e57f188667772ca45e470cc210fc71 0.0s done
+#28 naming to docker.io/library/infra-backend:latest done
+#28 unpacking to docker.io/library/infra-backend:latest done
+#28 DONE 0.1s
+
+#29 [backend] resolving provenance for metadata file
+#29 DONE 0.0s
+
+#30 [frontend] resolving provenance for metadata file
+#30 DONE 0.0s
+ Image infra-backend 
+Built 
+ Image infra-frontend 
+Built 

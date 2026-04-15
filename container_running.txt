@@ -1,0 +1,4 @@
+infra-frontend-1 Up 14 seconds
+infra-backend-1 Up 6 minutes (healthy)
+infra-db-1 Up 9 minutes (healthy)
+count_calories_db Up 31 minutes (healthy)
