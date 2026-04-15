@@ -1,12 +1,51 @@
 import type { GameSnapshot, LeaderboardSnapshot, LobbySnapshot } from "@/types";
+import {
+  createMockLobby,
+  getMockLeaderboard,
+  getMockLobby,
+  getMockSession,
+  joinMockLobby,
+  sendMockSessionMessage,
+  startMockLobby,
+  subscribeMockLobby,
+  subscribeMockSession,
+  toggleMockReady,
+} from "@/lib/mock-api";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api";
 const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws").replace(/\/api$/, "");
+const MOCK_MODE = parseMockMode(process.env.NEXT_PUBLIC_MOCK_MODE ?? process.env.MOCK_MODE);
 
 type ApiErrorPayload = {
   message?: string;
 };
+
+export type SessionRealtimeMessage =
+  | { type: "chat.send"; message: string }
+  | { type: "editor.update"; content: string }
+  | { type: "category.vote"; categorySlug: string }
+  | { type: "meeting.start" }
+  | { type: "meeting.vote"; targetPlayerId: string }
+  | { type: "sabotage.use" };
+
+type SubscriptionOptions<T> = {
+  onSnapshot: (snapshot: T) => void;
+  onError?: () => void;
+};
+
+type SessionConnection = {
+  close: () => void;
+  send: (payload: SessionRealtimeMessage) => void;
+};
+
+function parseMockMode(value: string | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  return ["1", "true", "yes", "on", "enable", "enabled"].includes(value.toLowerCase());
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -30,6 +69,10 @@ export function createLobby(payload: {
   mode: string;
   maxPlayers: number;
 }) {
+  if (MOCK_MODE) {
+    return createMockLobby(payload);
+  }
+
   return request<{ playerId: string; lobby: { code: string } }>("/lobbies", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -37,6 +80,10 @@ export function createLobby(payload: {
 }
 
 export function joinLobby(code: string, payload: { playerName: string }) {
+  if (MOCK_MODE) {
+    return joinMockLobby(code, payload);
+  }
+
   return request<{ playerId: string }>(`/lobbies/${code}/join`, {
     method: "POST",
     body: JSON.stringify(payload),
@@ -44,16 +91,28 @@ export function joinLobby(code: string, payload: { playerName: string }) {
 }
 
 export function getLobby(code: string) {
+  if (MOCK_MODE) {
+    return getMockLobby(code);
+  }
+
   return request<LobbySnapshot>(`/lobbies/${code}`);
 }
 
 export function toggleReady(code: string, playerId: string) {
+  if (MOCK_MODE) {
+    return toggleMockReady(code, playerId);
+  }
+
   return request<LobbySnapshot>(`/lobbies/${code}/players/${playerId}/ready`, {
     method: "POST",
   });
 }
 
 export function startLobby(code: string, playerId: string) {
+  if (MOCK_MODE) {
+    return startMockLobby(code, playerId);
+  }
+
   return request<{ sessionId: string }>(`/lobbies/${code}/start`, {
     method: "POST",
     body: JSON.stringify({ playerId }),
@@ -61,11 +120,19 @@ export function startLobby(code: string, playerId: string) {
 }
 
 export function getSession(sessionId: string, playerId?: string) {
+  if (MOCK_MODE) {
+    return getMockSession(sessionId, playerId);
+  }
+
   const params = playerId ? `?playerId=${encodeURIComponent(playerId)}` : "";
   return request<GameSnapshot>(`/sessions/${sessionId}${params}`);
 }
 
 export function getLeaderboard() {
+  if (MOCK_MODE) {
+    return getMockLeaderboard();
+  }
+
   return request<LeaderboardSnapshot>("/leaderboard");
 }
 
@@ -79,4 +146,113 @@ export function getSessionWebSocketUrl(sessionId: string, playerId?: string) {
     url.searchParams.set("playerId", playerId);
   }
   return url.toString();
+}
+
+export function subscribeLobby(
+  code: string,
+  options: SubscriptionOptions<LobbySnapshot>,
+) {
+  if (MOCK_MODE) {
+    return subscribeMockLobby(code, options.onSnapshot);
+  }
+
+  let websocket: WebSocket | null = null;
+  let reconnectTimer: number | null = null;
+  let closed = false;
+
+  const connect = () => {
+    websocket = new window.WebSocket(getLobbyWebSocketUrl(code));
+    websocket.onmessage = (event) => {
+      const message = JSON.parse(event.data) as {
+        type: "lobby.updated";
+        payload: LobbySnapshot | null;
+      };
+
+      if (message.type === "lobby.updated" && message.payload) {
+        options.onSnapshot(message.payload);
+      }
+    };
+    websocket.onerror = () => {
+      options.onError?.();
+    };
+    websocket.onclose = () => {
+      if (!closed) {
+        reconnectTimer = window.setTimeout(connect, 1500);
+      }
+    };
+  };
+
+  connect();
+
+  return () => {
+    closed = true;
+    if (reconnectTimer !== null) {
+      window.clearTimeout(reconnectTimer);
+    }
+    websocket?.close();
+  };
+}
+
+export function connectSession(
+  sessionId: string,
+  playerId: string | undefined,
+  options: SubscriptionOptions<GameSnapshot>,
+): SessionConnection {
+  if (MOCK_MODE) {
+    const unsubscribe = subscribeMockSession(sessionId, playerId, options.onSnapshot);
+
+    return {
+      close: unsubscribe,
+      send: (payload) => {
+        void sendMockSessionMessage(sessionId, playerId, payload).catch(() => {
+          options.onError?.();
+        });
+      },
+    };
+  }
+
+  let websocket: WebSocket | null = null;
+  let reconnectTimer: number | null = null;
+  let closed = false;
+
+  const connect = () => {
+    websocket = new window.WebSocket(getSessionWebSocketUrl(sessionId, playerId));
+    websocket.onmessage = (event) => {
+      const message = JSON.parse(event.data) as {
+        type: "session.updated";
+        payload: GameSnapshot | null;
+      };
+
+      if (message.type === "session.updated" && message.payload) {
+        options.onSnapshot(message.payload);
+      }
+    };
+    websocket.onerror = () => {
+      options.onError?.();
+    };
+    websocket.onclose = () => {
+      if (!closed) {
+        reconnectTimer = window.setTimeout(connect, 1500);
+      }
+    };
+  };
+
+  connect();
+
+  return {
+    close: () => {
+      closed = true;
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+      }
+      websocket?.close();
+    },
+    send: (payload) => {
+      if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      websocket.send(JSON.stringify(payload));
+    },
+  };
 }

@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { getSession, getSessionWebSocketUrl } from "@/lib/api";
+import { connectSession, getSession, type SessionRealtimeMessage } from "@/lib/api";
 import { getSessionPlayerId } from "@/lib/player-session";
 import type { GameSnapshot } from "@/types";
 
@@ -15,20 +15,12 @@ type GameSessionClientProps = {
   sessionId: string;
 };
 
-type OutgoingMessage =
-  | { type: "chat.send"; message: string }
-  | { type: "editor.update"; content: string }
-  | { type: "category.vote"; categorySlug: string }
-  | { type: "meeting.start" }
-  | { type: "meeting.vote"; targetPlayerId: string }
-  | { type: "sabotage.use" };
-
 export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState("");
   const [chatDraft, setChatDraft] = useState("");
-  const socketRef = useRef<WebSocket | null>(null);
+  const sessionConnectionRef = useRef<ReturnType<typeof connectSession> | null>(null);
   const editorSyncTimerRef = useRef<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [roleRevealStage, setRoleRevealStage] = useState<"hidden" | "assigning" | "revealed">("hidden");
@@ -37,8 +29,6 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   useEffect(() => {
     const playerId = getSessionPlayerId(sessionId);
     let cancelled = false;
-    let websocket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
 
     async function loadSession() {
       try {
@@ -57,49 +47,27 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       }
     }
 
-    function connect() {
-      websocket = new window.WebSocket(
-        getSessionWebSocketUrl(sessionId, playerId ?? undefined),
-      );
-      socketRef.current = websocket;
-
-      websocket.onmessage = (event) => {
-        const message = JSON.parse(event.data) as {
-          type: "session.updated";
-          payload: GameSnapshot | null;
-        };
-
-        if (!cancelled && message.type === "session.updated" && message.payload) {
-          setSnapshot(message.payload);
-          setEditorContent(message.payload.editorContent);
+    void loadSession();
+    sessionConnectionRef.current = connectSession(sessionId, playerId ?? undefined, {
+      onSnapshot: (nextSnapshot) => {
+        if (!cancelled) {
+          setSnapshot(nextSnapshot);
+          setEditorContent(nextSnapshot.editorContent);
           setLoadError(null);
         }
-      };
-
-      websocket.onerror = () => {
+      },
+      onError: () => {
         void loadSession();
-      };
-
-      websocket.onclose = () => {
-        if (!cancelled) {
-          reconnectTimer = window.setTimeout(connect, 1500);
-        }
-      };
-    }
-
-    void loadSession();
-    connect();
+      },
+    });
 
     return () => {
       cancelled = true;
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-      }
       if (editorSyncTimerRef.current !== null) {
         window.clearTimeout(editorSyncTimerRef.current);
       }
-      socketRef.current = null;
-      websocket?.close();
+      sessionConnectionRef.current?.close();
+      sessionConnectionRef.current = null;
     };
   }, [sessionId]);
 
@@ -110,24 +78,30 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   useEffect(() => {
     if (snapshot?.phase === "playing" && !hasShownRoleRef.current) {
       hasShownRoleRef.current = true;
-      setRoleRevealStage("assigning");
+      const t0 = setTimeout(() => {
+        setRoleRevealStage("assigning");
+      }, 0);
       const t1 = setTimeout(() => {
         setRoleRevealStage("revealed");
       }, 2500);
       const t2 = setTimeout(() => {
         setRoleRevealStage("hidden");
       }, 5500);
-      return () => { clearTimeout(t1); clearTimeout(t2); };
+      return () => {
+        clearTimeout(t0);
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     }
   }, [snapshot?.phase]);
 
-  function sendRealtimeMessage(payload: OutgoingMessage) {
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+  function sendRealtimeMessage(payload: SessionRealtimeMessage) {
+    const connection = sessionConnectionRef.current;
+    if (!connection) {
       return;
     }
 
-    socket.send(JSON.stringify(payload));
+    connection.send(payload);
   }
 
   function handleEditorChange(nextValue: string) {
