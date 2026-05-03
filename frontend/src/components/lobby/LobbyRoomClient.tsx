@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import { getLobbyPlayerId, setLobbyPlayerId, setSessionPlayerId } from "@/lib/player-session";
 import type { CategoryOption, LobbyPlayer, LobbySnapshot } from "@/types";
+import { getCharacterAsset } from "@/lib/character-assets";
 
 type LobbyRoomClientProps = {
   code: string;
@@ -31,20 +32,6 @@ const PixelCopyIcon = () => (
     />
   </svg>
 );
-
-const CHARACTER_ASSETS = [
-  "character-base.gif",
-  "character-dude.gif",
-  "character-helmet.gif",
-  "character-knight.gif",
-  "character-orc.gif",
-];
-
-function getCharacterAsset(playerId: string) {
-  const sum = Array.from(playerId).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const name = CHARACTER_ASSETS[sum % CHARACTER_ASSETS.length];
-  return `/Char/${name}`;
-}
 
 export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
   const router = useRouter();

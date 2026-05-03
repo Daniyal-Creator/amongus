@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { getSession, getSessionWebSocketUrl } from "@/lib/api";
 import { getSessionPlayerId } from "@/lib/player-session";
 import type { GameSnapshot } from "@/types";
+import { getCharacterAsset } from "@/lib/character-assets";
 
 const CodeEditor = dynamic(
   () => import("@/components/editor/CodeEditor").then((m) => m.CodeEditor),
@@ -235,10 +236,15 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
               <div className="mt-4 space-y-2">
                 {snapshot.players.map((player) => (
                   <div key={player.id} className="flex items-center gap-3">
-                    <span
-                      className="h-4 w-4 border-2 border-[color:var(--brown-dark)] shrink-0"
-                      style={{ backgroundColor: player.color }}
-                    />
+                    <div className="w-[36px] h-[36px] flex items-center justify-center border-[2px] border-[#5c4427] bg-[#8a6b45] shadow-[inset_0_0_4px_rgba(0,0,0,0.3)] shrink-0 relative">
+                      <img 
+                        src={getCharacterAsset(player.id)} 
+                        alt={player.name}
+                        style={{ imageRendering: "pixelated" }}
+                        className="w-[24px] h-[24px] object-contain drop-shadow-md"
+                      />
+                      <div className="absolute top-0.5 left-0.5 w-1.5 h-1.5 border-[1px] border-black/50 shadow-sm" style={{ backgroundColor: player.color }} title="Team Color" />
+                    </div>
                     <span
                       className={`text-base leading-tight ${
                         player.id === snapshot.currentUser.id ? "text-[color:var(--red)]" : ""
@@ -312,7 +318,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             {/* Right sidebar: Chat */}
             <aside className="grid min-h-full grid-rows-[1fr_auto]">
               <div className="flex flex-col">
-                <div className="border-b-4 border-[color:var(--brown)] px-4 py-3 text-xl shrink-0">
+                <div className="border-b-4 border-[color:var(--brown)] px-2 py-3 text-center text-base xl:text-lg shrink-0 leading-tight">
                   {rightPanelTitle}
                 </div>
                 <div className="p-3 flex-1 overflow-y-auto max-h-[620px]">
@@ -346,8 +352,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
               <div className="border-t-4 border-[color:var(--brown)] p-3">
                 <form onSubmit={handleChatSubmit} className="grid grid-cols-[1fr_42px] gap-2">
                   <input
-                    className="pixel-input min-h-[40px] text-sm"
-                    placeholder={isCivilian ? "Type a message..." : "Send covert message..."}
+                    className="pixel-input min-h-[40px] text-xs px-2"
+                    placeholder={isCivilian ? "Type a message..." : "Covert message..."}
                     value={chatDraft}
                     onChange={(event) => setChatDraft(event.target.value)}
                   />
@@ -532,17 +538,30 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
       {/* Role Reveal Overlay */}
       {roleRevealStage !== "hidden" ? (
-        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black">
+        <div className={`fixed inset-0 z-[100] flex flex-col items-center justify-center transition-colors duration-1000 ${
+          roleRevealStage === "assigning" 
+            ? "bg-black"
+            : isCivilian
+              ? "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1d4018] via-[#0c1f09] to-black"
+              : "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#5e0d0d] via-[#240303] to-black"
+        }`}>
           {roleRevealStage === "assigning" ? (
             <p className="pixel-title text-3xl sm:text-5xl text-white animate-pulse tracking-widest">
               Assigning roles...
             </p>
           ) : (
-            <p className={`pixel-title text-6xl sm:text-8xl tracking-widest animate-in zoom-in duration-500 drop-shadow-[0_0_20px_currentColor] ${
-              isCivilian ? "text-[#a2e858]" : "text-[#df4c43]"
-            }`}>
-              {roleLabel}
-            </p>
+            <div className="flex flex-col items-center animate-in zoom-in slide-in-from-bottom-8 duration-700 ease-out">
+              <p className={`pixel-title text-7xl sm:text-9xl tracking-widest drop-shadow-[0_0_30px_rgba(0,0,0,0.8)] ${
+                isCivilian ? "text-[#a2e858]" : "text-[#ff3333]"
+              }`}>
+                {roleLabel}
+              </p>
+              <p className={`pixel-small mt-6 text-xl sm:text-2xl tracking-wide drop-shadow-md ${
+                isCivilian ? "text-[#c5ff8f]" : "text-[#ff8f8f]"
+              }`}>
+                {isCivilian ? "Complete tasks & find the imposter" : "Sabotage and eliminate them all"}
+              </p>
+            </div>
           )}
         </div>
       ) : null}

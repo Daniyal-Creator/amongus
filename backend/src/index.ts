@@ -1549,9 +1549,9 @@ app.post<{
       return { message: "Hanya host yang bisa memulai game." };
     }
 
-    if (lobby.players.length < 4) {
+    if (lobby.players.length < 1) {
       reply.code(400);
-      return { message: "Minimal 4 pemain untuk memulai." };
+      return { message: "Minimal 1 pemain untuk memulai." };
     }
 
     const allNonHostReady = lobby.players
@@ -1693,7 +1693,11 @@ app.get<{
 
 async function start() {
   try {
-    await initDatabase();
+    if (config.mockMode) {
+      app.log.info("MOCK_MODE enabled — skipping database initialization.");
+    } else {
+      await initDatabase();
+    }
     sessionTickInterval = setInterval(() => {
       void tickPlayingSessions();
     }, 1000);
