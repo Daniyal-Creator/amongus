@@ -4,8 +4,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   getLobby,
-  getLobbyWebSocketUrl,
   joinLobby,
+  subscribeLobby,
   startLobby,
   toggleReady,
 } from "@/lib/api";
@@ -56,8 +56,6 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
     }
 
     let cancelled = false;
-    let websocket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
 
     async function loadLobby() {
       try {
@@ -75,38 +73,22 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
       }
     }
 
-    function connect() {
-      websocket = new window.WebSocket(getLobbyWebSocketUrl(code));
-      websocket.onmessage = (event) => {
-        const message = JSON.parse(event.data) as {
-          type: "lobby.updated";
-          payload: LobbySnapshot | null;
-        };
-
-        if (!cancelled && message.type === "lobby.updated" && message.payload) {
-          setSnapshot(message.payload);
+    void loadLobby();
+    const unsubscribe = subscribeLobby(code, {
+      onSnapshot: (lobby) => {
+        if (!cancelled) {
+          setSnapshot(lobby);
           setError(null);
         }
-      };
-      websocket.onerror = () => {
+      },
+      onError: () => {
         void loadLobby();
-      };
-      websocket.onclose = () => {
-        if (!cancelled) {
-          reconnectTimer = window.setTimeout(connect, 1500);
-        }
-      };
-    }
-
-    void loadLobby();
-    connect();
+      },
+    });
 
     return () => {
       cancelled = true;
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-      }
-      websocket?.close();
+      unsubscribe();
     };
   }, [code]);
 
@@ -254,8 +236,8 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
         ) : (
           <div className="w-full max-w-lg animate-in slide-in-from-bottom-4 duration-300">
             <div className="mb-6 flex flex-col items-center">
-              <h1 className="pixel-title whitespace-nowrap text-4xl text-white [text-shadow:4px_4px_0_#2b4a1b] sm:text-5xl">
-                WAITING LIST
+              <h1 className="pixel-title text-4xl text-white [text-shadow:4px_4px_0_#2b4a1b] sm:text-6xl">
+                CODE MAFIA
               </h1>
               <div className="mt-4 flex items-center gap-3 rounded-xl bg-black/40 px-5 py-2 border-2 border-white/10">
                 <span className="pixel-small text-white/80">LOBBY CODE:</span>
@@ -287,7 +269,7 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
 
               <div className="space-y-3 min-h-[160px]">
                 {players.length === 0 ? (
-                  <div className="flex h-full items-center justify-center border-4 border-[#5c4427] bg-[#8a6b45]">
+                  <div className="flex h-full items-center justify-center">
                     <p className="pixel-small text-center text-white/60 animate-pulse">Waiting for players...</p>
                   </div>
                 ) : null}
@@ -380,6 +362,20 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
             {error ? (
               <p className="pixel-small mt-6 text-center text-[#ff8b81] drop-shadow-md bg-black/40 py-2 rounded-lg">{error}</p>
             ) : null}
+
+            {categoryOptions.length > 0 && (
+              <div className="mt-8 pixel-panel p-4 bg-black/30 border-2">
+                <h3 className="pixel-small text-white/80 mb-3 text-center">Category Votes</h3>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {categoryOptions.slice(0, 4).map((cat) => (
+                    <div key={cat.slug} className="flex gap-2 items-center bg-[color:var(--brown)] px-3 py-1 border-2 border-[color:var(--brown-dark)]">
+                      <span className="pixel-small text-white">{cat.name}</span>
+                      <span className="text-[#a2e858] font-bold">{cat.votes}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
