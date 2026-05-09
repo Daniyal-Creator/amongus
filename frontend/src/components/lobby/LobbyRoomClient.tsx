@@ -10,7 +10,7 @@ import {
   toggleReady,
 } from "@/lib/api";
 import { getLobbyPlayerId, setLobbyPlayerId, setSessionPlayerId } from "@/lib/player-session";
-import type { CategoryOption, LobbyPlayer, LobbySnapshot } from "@/types";
+import type { LobbyPlayer, LobbySnapshot } from "@/types";
 import { getCharacterAsset } from "@/lib/character-assets";
 
 type LobbyRoomClientProps = {
@@ -93,10 +93,6 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
   }, [code]);
 
   const players = useMemo(() => snapshot?.players ?? [], [snapshot]);
-  const categoryOptions: CategoryOption[] = useMemo(
-    () => snapshot?.categories ?? [],
-    [snapshot],
-  );
   const hostPlayer = players.find((player) => player.isHost) ?? players[0];
   const currentPlayer =
     players.find((player) => player.id === currentUserId) ?? null;
@@ -236,7 +232,7 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
         ) : (
           <div className="w-full max-w-lg animate-in slide-in-from-bottom-4 duration-300">
             <div className="mb-6 flex flex-col items-center">
-              <h1 className="pixel-title text-4xl text-white [text-shadow:4px_4px_0_#2b4a1b] sm:text-6xl">
+              <h1 className="pixel-title w-full text-center text-4xl leading-none text-white [text-shadow:4px_4px_0_#2b4a1b] sm:text-6xl">
                 CODE MAFIA
               </h1>
               <div className="mt-4 flex items-center gap-3 rounded-xl bg-black/40 px-5 py-2 border-2 border-white/10">
@@ -362,20 +358,6 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
             {error ? (
               <p className="pixel-small mt-6 text-center text-[#ff8b81] drop-shadow-md bg-black/40 py-2 rounded-lg">{error}</p>
             ) : null}
-
-            {categoryOptions.length > 0 && (
-              <div className="mt-8 pixel-panel p-4 bg-black/30 border-2">
-                <h3 className="pixel-small text-white/80 mb-3 text-center">Category Votes</h3>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {categoryOptions.slice(0, 4).map((cat) => (
-                    <div key={cat.slug} className="flex gap-2 items-center bg-[color:var(--brown)] px-3 py-1 border-2 border-[color:var(--brown-dark)]">
-                      <span className="pixel-small text-white">{cat.name}</span>
-                      <span className="text-[#a2e858] font-bold">{cat.votes}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
