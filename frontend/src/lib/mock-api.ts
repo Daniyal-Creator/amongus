@@ -24,6 +24,7 @@ const PLAYER_TITLES = [
 type SessionRealtimeMessage =
   | { type: "chat.send"; message: string }
   | { type: "editor.update"; content: string }
+  | { type: "editor.cursor"; anchor: number; head: number }
   | { type: "category.vote"; categorySlug: string }
   | { type: "meeting.start" }
   | { type: "meeting.vote"; targetPlayerId: string }

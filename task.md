@@ -8,9 +8,18 @@ Dokumen ini membandingkan fitur-fitur yang tercantum di `docs/tech-spec.md` dan 
 
 | Status | Jumlah |
 |--------|--------|
-| ✅ Selesai (Fully Implemented) | 13 |
-| 🔄 Partial (Partially Implemented) | 6 |
-| ❌ Belum Ada (Not Implemented) | 11 |
+| ✅ Selesai (Fully Implemented) | 22 |
+| 🔄 Partial (Partially Implemented) | 1 |
+| ❌ Belum Ada (Not Implemented) | 7 |
+
+> **Update 2026-05-11** — Pass implementasi besar:
+> Security Scanner, Copilot Poisoning, AI Sabotage Co-Pilot, AI Post-Game
+> Review, Tournament/Leaderboard scoring, Editor cursor presence, Code
+> Execution Sandbox (Piston), Ollama AI integration, AI rate limiting,
+> Category leaderboard filter, Detailed game review API, Redis-backed
+> persistent cache (in-memory fallback), Modular `services/` + `routes/`
+> structure, dan Server-side role validation guard sudah dikerjakan.
+> Lihat bagian "🆕 Fitur yang Baru Diimplementasikan" di bawah.
 
 ---
 
@@ -127,6 +136,74 @@ Dokumen ini membandingkan fitur-fitur yang tercantum di `docs/tech-spec.md` dan 
 
 **Lokasi:**
 - Backend: `backend/src/index.ts` - finishGame, advanceToNextRound
+
+---
+
+## 🆕 Fitur yang Baru Diimplementasikan (Pass 2026-05-11)
+
+### A. Security Scanner Task (MedBay) — ✅ Done
+- Service: [backend/src/services/security-scanner.ts](backend/src/services/security-scanner.ts) — heuristic SAST (eval, sql concat, hardcoded secret, weak hash, dll), grade `verified` / `needs_review` / `vulnerable`.
+- Endpoint: `POST /api/sessions/:sessionId/security-scan` di [backend/src/routes/security-routes.ts](backend/src/routes/security-routes.ts).
+- Hasil scan dipersist ke `session_security_scans` untuk dipakai post-game review.
+
+### B. Copilot Poisoning — ✅ Done
+- `POST /api/ai/activate-poisoning` di [backend/src/routes/ai-routes.ts](backend/src/routes/ai-routes.ts).
+- Imposter-only + AI rate-limit 5/min. Memanggil Ollama untuk membuat **hint palsu yang plausible**, lalu di-inject ke chat publik sebagai `copilot.ai`.
+- Dicatat ke `session_sabotage_log` dengan `poisoned=TRUE`.
+
+### C. AI Sabotage Co-Pilot ("Ghost in the Code") — ✅ Done
+- `POST /api/ai/sabotage-suggest` di [backend/src/routes/ai-routes.ts](backend/src/routes/ai-routes.ts).
+- Imposter-only, panggil Ollama dengan system prompt khusus (lihat [backend/src/services/ai-prompts.ts](backend/src/services/ai-prompts.ts)).
+- Disisipkan ke imposter feed (`session_imposter_messages`).
+
+### D. AI Code Review Post-Game — ✅ Done
+- `GET /api/game/:sessionId/review` di [backend/src/routes/ai-routes.ts](backend/src/routes/ai-routes.ts).
+- Hanya valid setelah `phase = game_over`. Hasil di-cache di `session_reviews`.
+- Fallback statis dipakai jika Ollama tidak tersedia.
+
+### E. Tournament & Leaderboard System — ✅ Done
+- Service: [backend/src/services/scoring.ts](backend/src/services/scoring.ts).
+- `finishGame` sekarang memanggil `recordGameResult` (lihat [backend/src/index.ts](backend/src/index.ts)) → tabel `game_results`, `leaderboard_history`, dan upsert `leaderboard_entries`.
+- Endpoints baru:
+  - `GET /api/leaderboard/:category` — category filter
+  - `GET /api/leaderboard/tournament` — rolling 7 hari
+
+### F. Editor Collaboration: Cursor Presence — ✅ Done
+- WS event `editor.cursor` (anchor + head) → diteruskan ke `session.cursors` (lihat [backend/src/index.ts](backend/src/index.ts) dan [backend/src/services/presence.ts](backend/src/services/presence.ts)).
+- Disertakan dalam `GameSnapshot.cursors`. Bersih otomatis saat socket disconnect.
+
+### G. Code Execution / Sandbox — ✅ Done
+- `POST /api/sessions/:sessionId/execute` di [backend/src/routes/sandbox-routes.ts](backend/src/routes/sandbox-routes.ts).
+- Backend Piston publik (override via `PISTON_BASE_URL`).
+- Dukungan multi-bahasa (JS/TS/Python/Go/Java). Hasil di-persist ke `session_test_runs`.
+
+### H. Ollama AI Integration — ✅ Done
+- [backend/src/services/ollama.ts](backend/src/services/ollama.ts) — wrapper `fetch` → `/api/generate`, dengan timeout & error typing.
+- Konfigurasi env: `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `OLLAMA_API_KEY`.
+
+### I. Rate Limiting — ✅ Done
+- [backend/src/services/rate-limit.ts](backend/src/services/rate-limit.ts) menyatukan chat (10/10s) dan AI (5/min) di atas Redis (atau fallback in-memory).
+- Lama `chatRateMap` lokal dihapus, sekarang shared dengan AI bucket.
+
+### J. Persistent Cache / Redis — ✅ Done (graceful fallback)
+- [backend/src/services/cache.ts](backend/src/services/cache.ts) — `ioredis` jika `REDIS_URL` di-set, kalau tidak otomatis pakai in-memory map.
+- Rate limiter & counter session state dapat dipindahkan ke Redis tanpa perubahan caller.
+
+### K. Category Filter Leaderboard — ✅ Done
+- `GET /api/leaderboard/:category` di [backend/src/routes/leaderboard-routes.ts](backend/src/routes/leaderboard-routes.ts).
+- `category = "all"` mengembalikan global ranking.
+
+### L. Detailed Game Reviews API — ✅ Done
+- Sama dengan (D), plus snapshot sabotase di-include via `session_sabotage_log`.
+
+### M. Server-Side Role Validation — ✅ Done
+- [backend/src/services/auth-guard.ts](backend/src/services/auth-guard.ts) menyediakan `loadSessionRole`, `assertImposter`, `assertAlive`.
+- Semua REST sensitif (AI, sabotage suggest, poisoning) mengeksekusi guard ini sebelum aksi.
+- WS handler kini menolak event mutasi dari pemain yang sudah di-eject (kecuali chat & cursor).
+
+### N. Proper File/Project Structure — ✅ Done (parsial → modular)
+- Folder baru: `backend/src/services/` (cache, rate-limit, ollama, sandbox, security-scanner, scoring, auth-guard, ai-prompts, presence) dan `backend/src/routes/` (ai-routes, security-routes, sandbox-routes, leaderboard-routes).
+- `backend/src/index.ts` dipangkas — tidak lagi monolit untuk fitur baru.
 
 ---
 

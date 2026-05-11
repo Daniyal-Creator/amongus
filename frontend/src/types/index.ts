@@ -119,4 +119,73 @@ export type GameSnapshot = {
     winnerTeam: "civilian" | "imposter" | null;
     reason: string | null;
   };
+  cursors?: CursorPresence[];
 };
+
+export type CursorPresence = {
+  playerId: string;
+  name: string;
+  color: string;
+  anchor: number;
+  head: number;
+};
+
+export type SecurityScanIssue = {
+  rule: string;
+  severity: "low" | "medium" | "high";
+  line: number;
+  excerpt: string;
+  message: string;
+};
+
+export type SecurityScanReport = {
+  passed: boolean;
+  badge: "verified" | "needs_review" | "vulnerable";
+  issues: SecurityScanIssue[];
+  scannedLines: number;
+};
+
+export type SandboxTestResult = {
+  passed: boolean;
+  input: string;
+  expected: string;
+  actual: string;
+  error?: string;
+};
+
+export type SandboxRunResponse = {
+  passed: number;
+  total: number;
+  results: SandboxTestResult[];
+};
+
+export type AiSabotageSuggestResponse = {
+  suggestion: string;
+  model: string;
+  remaining: number;
+};
+
+export type AiPoisoningResponse = {
+  poisonedHint: string;
+  usedFallback: boolean;
+  remaining: number;
+};
+
+export type GameReviewResponse = {
+  review: string;
+  model: string;
+  cached: boolean;
+};
+
+export type CategoryLeaderboardResponse = {
+  category: string;
+  entries: LeaderboardEntry[];
+};
+
+export type TournamentEntry = {
+  player_name: string;
+  score: number;
+  wins: number;
+  games: number;
+};
+

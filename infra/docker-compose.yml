@@ -23,9 +23,19 @@ services:
       HOST: 0.0.0.0
       DATABASE_URL: postgres://postgres:postgres@db:5432/amongus_coder
       CORS_ORIGIN: "*"
+      # Ollama: point ke host machine supaya bisa pakai Ollama lokal jika tersedia
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: qwen2.5-coder:7b
+      # Piston public sandbox
+      PISTON_BASE_URL: https://emkc.org/api/v2/piston
+      # Rate limits
+      AI_RATE_LIMIT_PER_MINUTE: "5"
+      CHAT_RATE_LIMIT_PER_10S: "10"
     depends_on:
       db:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "4000:4000"
     healthcheck:

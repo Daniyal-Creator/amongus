@@ -1,4 +1,16 @@
-import type { GameSnapshot, LeaderboardSnapshot, LobbySnapshot } from "@/types";
+import type {
+  AiPoisoningResponse,
+  AiSabotageSuggestResponse,
+  CategoryLeaderboardResponse,
+  CursorPresence,
+  GameReviewResponse,
+  GameSnapshot,
+  LeaderboardSnapshot,
+  LobbySnapshot,
+  SandboxRunResponse,
+  SecurityScanReport,
+  TournamentEntry,
+} from "@/types";
 import {
   createMockLobby,
   getMockLeaderboard,
@@ -24,14 +36,23 @@ type ApiErrorPayload = {
 export type SessionRealtimeMessage =
   | { type: "chat.send"; message: string }
   | { type: "editor.update"; content: string }
+  | { type: "editor.cursor"; anchor: number; head: number }
   | { type: "category.vote"; categorySlug: string }
   | { type: "meeting.start" }
   | { type: "meeting.vote"; targetPlayerId: string }
   | { type: "sabotage.use" };
 
+export type SessionRealtimePush =
+  | { type: "session.updated"; payload: GameSnapshot | null }
+  | { type: "session.cursors"; payload: CursorPresence[] };
+
 type SubscriptionOptions<T> = {
   onSnapshot: (snapshot: T) => void;
   onError?: () => void;
+};
+
+type SessionSubscriptionOptions = SubscriptionOptions<GameSnapshot> & {
+  onCursors?: (cursors: CursorPresence[]) => void;
 };
 
 type SessionConnection = {
@@ -136,6 +157,46 @@ export function getLeaderboard() {
   return request<LeaderboardSnapshot>("/leaderboard");
 }
 
+export function getCategoryLeaderboard(category: string) {
+  return request<CategoryLeaderboardResponse>(`/leaderboard/${encodeURIComponent(category)}`);
+}
+
+export function getTournamentLeaderboard() {
+  return request<{ entries: TournamentEntry[] }>("/leaderboard/tournament");
+}
+
+export function requestSabotageSuggestion(sessionId: string, playerId: string) {
+  return request<AiSabotageSuggestResponse>("/ai/sabotage-suggest", {
+    method: "POST",
+    body: JSON.stringify({ sessionId, playerId }),
+  });
+}
+
+export function activateCopilotPoisoning(sessionId: string, playerId: string) {
+  return request<AiPoisoningResponse>("/ai/activate-poisoning", {
+    method: "POST",
+    body: JSON.stringify({ sessionId, playerId }),
+  });
+}
+
+export function getGameReview(sessionId: string) {
+  return request<GameReviewResponse>(`/game/${sessionId}/review`);
+}
+
+export function runSecurityScan(sessionId: string, playerId: string) {
+  return request<SecurityScanReport>(`/sessions/${sessionId}/security-scan`, {
+    method: "POST",
+    body: JSON.stringify({ playerId }),
+  });
+}
+
+export function executeSandbox(sessionId: string, playerId: string, stdin?: string) {
+  return request<SandboxRunResponse>(`/sessions/${sessionId}/execute`, {
+    method: "POST",
+    body: JSON.stringify({ playerId, stdin }),
+  });
+}
+
 export function getLobbyWebSocketUrl(code: string) {
   return `${WS_BASE_URL}/ws/lobbies/${code.toUpperCase()}`;
 }
@@ -196,7 +257,7 @@ export function subscribeLobby(
 export function connectSession(
   sessionId: string,
   playerId: string | undefined,
-  options: SubscriptionOptions<GameSnapshot>,
+  options: SessionSubscriptionOptions,
 ): SessionConnection {
   if (MOCK_MODE) {
     const unsubscribe = subscribeMockSession(sessionId, playerId, options.onSnapshot);
@@ -218,13 +279,12 @@ export function connectSession(
   const connect = () => {
     websocket = new window.WebSocket(getSessionWebSocketUrl(sessionId, playerId));
     websocket.onmessage = (event) => {
-      const message = JSON.parse(event.data) as {
-        type: "session.updated";
-        payload: GameSnapshot | null;
-      };
+      const message = JSON.parse(event.data) as SessionRealtimePush;
 
       if (message.type === "session.updated" && message.payload) {
         options.onSnapshot(message.payload);
+      } else if (message.type === "session.cursors") {
+        options.onCursors?.(message.payload);
       }
     };
     websocket.onerror = () => {
