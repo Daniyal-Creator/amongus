@@ -1,97 +1,324 @@
-# Backend Task Breakdown — Code Mafia
+# Analisis Fitur: Docs vs Codebase
 
-## 1. Foundation
+Dokumen ini membandingkan fitur-fitur yang tercantum di `docs/tech-spec.md` dan `docs/sum.md` dengan implementasi yang ada di codebase saat ini.
 
-- Scaffold `backend/` dengan `Node.js + Fastify + TypeScript`.
-- Setup `tsconfig`, linting, env parsing, folder structure sesuai spec.
-- Tambahkan health check dan error handler global.
-- Siapkan Docker Compose untuk PostgreSQL, Redis, dan backend app.
+---
 
-## 2. Database & Prisma
+## Ringkasan Status
 
-- Inisialisasi Prisma untuk PostgreSQL.
-- Implement schema untuk tabel: `users`, `lobbies`, `lobby_players`, `game_sessions`, `rounds`, `challenges`, `sabotage_logs`, `votes`, `leaderboard`, `game_reviews`.
-- Buat migration awal dan seed data challenge per kategori.
-- Tambahkan index yang relevan untuk `lobbies.code`, `leaderboard.week_start`, `votes` uniqueness, dan lookup game state.
+| Status | Jumlah |
+|--------|--------|
+| ✅ Selesai (Fully Implemented) | 13 |
+| 🔄 Partial (Partially Implemented) | 6 |
+| ❌ Belum Ada (Not Implemented) | 11 |
 
-## 3. Auth
+---
 
-- Implement `POST /api/auth/register`.
-- Implement `POST /api/auth/login`.
-- Implement `POST /api/auth/logout`.
-- Hash password dengan aman dan keluarkan JWT.
-- Tambahkan auth middleware untuk REST dan handshake WebSocket.
+## ✅ Fitur yang Sudah Selesai (Fully Implemented)
 
-## 4. Lobby REST API
+### 1. Sistem Lobby & Role
+- **Buat Lobby** - Host membuat lobby dan mendapatkan kode unik 6 karakter
+- **Gabung Lobby** - Pemain lain bergabung lewat kode lobby
+- **Distribusi Role** - Sistem secara acak menetapkan 1 Imposter dan 3 Civilian
+- **Pemilihan Kategori** - Pemain melakukan vote untuk memilih kategori soal
+- **Status Player** - Ready/Waiting, Host indicator
 
-- Implement `POST /api/lobby/create`.
-- Implement `POST /api/lobby/join`.
-- Implement `GET /api/lobby/:code`.
-- Implement `POST /api/lobby/:code/ready`.
-- Implement `POST /api/lobby/:code/vote-category`.
-- Implement `POST /api/lobby/:code/start`.
-- Validasi minimal player, host-only actions, dan transisi state `waiting -> category_vote -> in_progress`.
+**Lokasi:**
+- Backend: `backend/src/index.ts` (line ~1389-1738)
+- Frontend: `frontend/src/components/lobby/LobbyRoomClient.tsx`
 
-## 5. Game REST API
+### 2. Live Collaborative Code Editor
+- **Editor real-time** - Menggunakan CodeMirror
+- **Warna pemain berbeda** - Setiap pemain dibedakan dengan warna cursor
+- **Sinkronisasi** - via WebSocket
 
-- Implement `GET /api/game/:sessionId`.
-- Implement `POST /api/game/:sessionId/sabotage`.
-- Implement `POST /api/game/:sessionId/emergency-meeting`.
-- Implement `POST /api/game/:sessionId/vote`.
-- Implement `GET /api/game/:sessionId/review`.
-- Buat service untuk state machine round, eject flow, winner calculation, dan rotasi round sampai maksimal 4.
+**Lokasi:**
+- Backend: `backend/src/index.ts` (line ~1058-1080) - editor.update handler
+- Frontend: `frontend/src/components/editor/CodeEditor.tsx`
 
-## 6. WebSocket Layer
+### 3. Sistem Round
+- **Total 4 Round** per sesi permainan
+- **Kategori voting** - Setiap round memilih kategori baru
+- **Timer** - countdown untuk voting dan playing phase
 
-- Setup Socket.io server dengan auth handshake JWT.
-- Implement event `editor:change` dan broadcast `editor:update`.
-- Implement event `chat:message` dan broadcast `chat:broadcast`.
-- Implement event `game:sabotage`.
-- Implement event `game:scan`.
-- Implement event `game:emergency`.
-- Implement event `game:vote`.
-- Broadcast state `game:state`, `game:meeting-start`, `game:eject`, `game:round-end`, dan `game:end`.
+**Lokasi:**
+- Backend: `backend/src/index.ts` (line ~764-925) - game logic
 
-## 7. Collaborative Editor & Execution
+### 4. Tugas Civilian
+- **Objectives panel** - Menampilkan task yang harus dikerjakan
+- **Test cases** - Ditampilkan di challenge
 
-- Pilih strategi sinkronisasi editor: OT atau CRDT.
-- Simpan state editor aktif per session/round di Redis.
-- Integrasikan sandbox runner via Judge0 atau Piston untuk run test case.
-- Pastikan timeout, memory limit, dan isolasi network/file sesuai spec keamanan.
+**Lokasi:**
+- Frontend: `frontend/src/components/game/GameSessionClient.tsx` (line ~243-261)
 
-## 8. AI Integration
+### 5. Tugas Imposter
+- **5 sabotage charges** per sesi
+- **Sabotage mutations** - Berbagai teknik sabotase (strict to loose equality, swap return, dll)
+- **Covert Feed** - Channel khusus untuk Imposter
 
-- Implement service Gemini utama dengan fallback OpenAI.
-- Implement `POST /api/ai/sabotage-suggest`.
-- Implement `POST /api/ai/activate-poisoning`.
-- Buat pipeline poisoned prompt saat civilian meminta bantuan AI.
-- Implement post-game AI review dan simpan hasil ke `game_reviews`.
+**Lokasi:**
+- Backend: `backend/src/index.ts` (line ~24-150) - SABOTAGE_MUTATIONS, line ~1283-1335 - sabotage handler
 
-## 9. Security & Validation
+### 6. Chat & Social Deduction
+- **Fitur chat** - Pesan antar pemain
+- **Emergency Meeting** - Pemicu meeting untuk voting
+- **Voting system** - Eject pemain berdasarkan vote
 
-- Tambahkan rate limiter untuk chat, AI request, dan sabotage.
-- Validasi role-sensitive action di server, bukan dari payload klien.
-- Simpan role/game flag sensitif di Redis + database.
-- Pastikan tidak ada logging PII/token sensitif.
-- Tambahkan schema validation untuk semua request dan socket payload.
+**Lokasi:**
+- Backend: `backend/src/index.ts` - chat, meeting handlers
+- Frontend: `frontend/src/components/game/GameSessionClient.tsx`
 
-## 10. Leaderboard & Weekly Ranking
+### 7. Database Schema
+- **Semua tabel** yang tercantum di tech-spec sudah dibuat
+- **Categories, Challenges, Lobbies, Sessions** - lengkap dengan seed data
 
-- Implement `GET /api/leaderboard`.
-- Implement `GET /api/leaderboard/:category`.
-- Implement `GET /api/leaderboard/hall-of-fame`.
-- Buat job/update service untuk kalkulasi skor mingguan, achievement, wall of shame, dan hall of fame.
+**Lokasi:**
+- Backend: `backend/src/db.ts` (line ~32-154)
 
-## 11. Testing
+### 8. WebSocket - Server Side
+- **Lobby WebSocket** - `/ws/lobbies/:code`
+- **Session WebSocket** - `/ws/sessions/:sessionId`
+- **Event handlers** - chat, editor, vote, sabotage
 
-- Tambahkan unit test untuk auth, lobby flow, winner calculation, dan score calculation.
-- Tambahkan integration test untuk REST API utama.
-- Tambahkan socket integration test untuk editor/chat/game events.
-- Tambahkan test untuk validasi role, rate limit, dan sabotage charge limit.
+**Lokasi:**
+- Backend: `backend/src/index.ts` (line ~940-1351)
 
-## 12. Frontend Integration Follow-up
+### 9. REST API - Backend
+- **GET /api/categories** - List kategori
+- **GET /api/leaderboard** - Leaderboard & Hall of Fame
+- **POST /api/lobbies** - Buat lobby
+- **POST /api/lobbies/:code/join** - Gabung lobby
+- **GET /api/lobbies/:code** - Get lobby
+- **POST /api/lobbies/:code/players/:playerId/ready** - Toggle ready
+- **POST /api/lobbies/:code/start** - Start game
+- **GET /api/sessions/:sessionId** - Get session
 
-- Sambungkan frontend ke REST API dan socket yang sudah jadi.
-- Ganti mock data di frontend dengan store + fetch real state.
-- Hook lobby/game pages ke loading, error, dan reconnect states.
-- Implement submit actions nyata untuk create/join/ready/vote/sabotage/chat/meeting.
+**Lokasi:**
+- Backend: `backend/src/index.ts`
+
+### 10. UI/UX - Pixel Art Style
+- **Desain retro/pixel art** - Sesuai spec
+- **Pixel components** - buttons, panels, inputs
+- **Responsive** - Support desktop dan mobile
+
+**Lokasi:**
+- Frontend: global.css (Tailwind theme)
+
+### 11. Leaderboard
+- **Global leaderboard** - Dengan score dan record
+- **Hall of Fame** - Achievement special entries
+- **Wall of Shame** - Included in Hall of Fame
+
+**Lokasi:**
+- Backend: `backend/src/index.ts` (line ~1353-1387)
+
+### 12. Emergency Code Review
+- **Snippet capture** - Kode di-capture saat emergency meeting dipicu
+- **Ditampilkan** di meeting overlay
+
+**Lokasi:**
+- Backend: `backend/src/index.ts` (line ~1129-1150)
+- Frontend: `frontend/src/components/game/GameSessionClient.tsx` (line ~414-420)
+
+### 13. Game State Machine
+- **Phase transitions** - waiting → category → playing → meeting → game_over
+- **Round advancement** - Otomatis setelah timer habis
+- **Win conditions** - Civilian/Imposter wins
+
+**Lokasi:**
+- Backend: `backend/src/index.ts` - finishGame, advanceToNextRound
+
+---
+
+## 🔄 Fitur Partial (Partially Implemented)
+
+### 1. Security Scanner Task (MedBay Equivalent)
+- **Status:** ⚠️ Partial
+- **Yang ada:** -
+- **Yang belum:** Task khusus untuk scan kerentanan, "Verified Developer" badge
+
+**Catatan:** Challenge objectives menampilkan task tapi tidak ada Security Scanner khusus.
+
+### 2. Copilot Poisoning
+- **Status:** ⚠️ Partial
+- **Yang ada:** -
+- **Yang belum:** Imposter bisa "meracuni" AI agar memberikan saran kode yang salah
+
+**Catatan:** Di tech-spec ada `/api/ai/activate-poisoning` endpoint, belum ada.
+
+### 3. AI Sabotage Co-Pilot ("Ghost in the Code")
+- **Status:** ⚠️ Partial
+- **Yang ada:** Imposter punya imposter_feed dengan predefined messages
+- **Yang belum:** Integrasi Gemini/OpenAI untuk suggest sabotage
+
+**Catatan:** Ada static imposter_feed dari seed data, belum ada AI integration.
+
+### 4. AI Code Review Post-Game
+- **Status:** ⚠️ Partial
+- **Yang ada:** Game over screen menampilkan winner dan players
+- **Yang belum:** AI-generated refactoring report
+
+**Catatan:** `GET /api/game/:sessionId/review` endpoint belum ada.
+
+### 5. Tournament & Leaderboard System
+- **Status:** ⚠️ Partial
+- **Yang ada:** Static leaderboard dari seed data
+- **Yang belum:**
+  - Ranking mingguan dinamis
+  - Skor perhitungan otomatis
+  - Weekly update jobs
+
+### 6. Editor Collaboration Features
+- **Status:** ⚠️ Partial
+- **Yang ada:** Basic sync via WebSocket (300ms debounce)
+- **Yang belum:**
+  - Cursor presence (melihat posisi cursor pemain lain)
+  - Selection highlighting
+  - OT/CRDT untuk conflict resolution
+
+**Catatan:** Saat ini hanya sync content, belum ada cursor overlay.
+
+---
+
+## ❌ Fitur yang Belum Ada (Not Implemented)
+
+### 1. Authentication System
+- **Tech Spec:** POST /api/auth/register, login, logout dengan JWT
+- **Status:** ❌ BELUM ADA
+- **Catatan:** Tidak ada user registration, login, JWT token management
+
+### 2. User Accounts & Profiles
+- **Tech Spec:** Tabel users dengan username, email, password_hash, avatar_color
+- **Status:** ❌ BELUM ADA
+- **Catatan:** Player identification via session storage local, bukan user accounts
+
+### 3. Code Execution / Sandbox
+- **Tech Spec:** Judge0 atau Piston API untuk eksekusi kode aman
+- **Status:** ❌ BELUM ADA
+- **Catatan:** Tidak ada endpoint untuk run test cases, validate solution
+
+### 4. AI Integration (Gemini/OpenAI)
+- **Tech Spec:**
+  - POST /api/ai/sabotage-suggest
+  - POST /api/ai/activate-poisoning
+  - AI Code Review Post-Game
+- **Status:** ❌ BELUM ADA
+- **Catatan:** Tidak ada AI service, semua data statis dari seed
+
+### 5. Rate Limiting (Bagian dari Security)
+- **Tech Spec:**
+  - Chat: 10 pesan per 10 detik
+  - AI request: 5 per menit
+  - Sabotage: 5 per sesi
+- **Status:** ⚠️ PARTIAL
+- **Yang ada:** Chat rate limiting (CHAT_RATE_LIMIT_MAX = 10)
+- **Yang belum:** AI request rate limiting
+
+### 6. Role Validation di Server
+- **Tech Spec:** Validasi role sensitif di server, bukan dari payload client
+- **Status:** ⚠️ PARTIAL
+- **Yang ada:** Role dicek dari database di WebSocket handler
+- **Yang belum:** Validasi lebih strict untuk semua aksi sensitif
+
+### 7. WebSocket Authentication
+- **Tech Spec:** JWT verification pada WebSocket handshake
+- **Status:** ❌ BELUM ADA
+- **Catatan:** WebSocket tidak menggunakan JWT, playerId dari query parameter
+
+### 8. Category Filter untuk Leaderboard
+- **Tech Spec:** GET /api/leaderboard/:category
+- **Status:** ❌ BELUM ADA
+- **Catatan:** Hanya ada GET /api/leaderboard global
+
+### 9. Detailed Game Reviews API
+- **Tech Spec:** GET /api/game/:sessionId/review
+- **Status:** ❌ BELUM ADA
+- **Catatan:** Endpoint tidak ada
+
+### 10. Persistent Game State (Redis)
+- **Tech Spec:** Session dan game state di Redis untuk performance
+- **Status:** ❌ BELUM ADA
+- **Catatan:** Hanya menggunakan PostgreSQL, Redis tidak digunakan
+
+### 11. Proper File/Project Structure sesuai Tech Spec
+- **Tech Spec:** Struktur direktori dengan controllers/, services/, models/, dll
+- **Status:** ⚠️ PARTIAL
+- **Yang ada:** Flat structure di backend/src/
+- **Yang belum:** Modular structure dengan controller/service separation
+
+---
+
+## 📋 Detail per Fitur
+
+### Authentication
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| POST | /api/auth/register | ❌ |
+| POST | /api/auth/login | ❌ |
+| POST | /api/auth/logout | ❌ |
+
+### Lobby API
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| POST | /api/lobby/create | ✅ |
+| POST | /api/lobby/join | ✅ |
+| GET | /api/lobby/:code | ✅ |
+| POST | /api/lobby/:code/ready | ✅ |
+| POST | /api/lobby/:code/vote-category | ✅ (via WebSocket) |
+| POST | /api/lobby/:code/start | ✅ |
+
+### Game API
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| GET | /api/game/:sessionId | ✅ |
+| POST | /api/game/:sessionId/sabotage | ✅ (via WebSocket) |
+| POST | /api/game/:sessionId/emergency-meeting | ✅ (via WebSocket) |
+| POST | /api/game/:sessionId/vote | ✅ (via WebSocket) |
+| GET | /api/game/:sessionId/review | ❌ |
+
+### Leaderboard API
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| GET | /api/leaderboard | ✅ |
+| GET | /api/leaderboard/:category | ❌ |
+| GET | /api/leaderboard/hall-of-fame | ✅ (combined) |
+
+### AI API
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| POST | /api/ai/sabotage-suggest | ❌ |
+| POST | /api/ai/activate-poisoning | ❌ |
+
+---
+
+## 📊 Kesimpulan
+
+### Kekuatan (Strengths)
+1. **Game engine lengkap** - Game logic, round management, win conditions berfungsi
+2. **Real-time communication** - WebSocket bekerja dengan baik
+3. **UI yang menarik** - Pixel art style sudah sesuai spec
+4. **Database schema** - Lengkap sesuai tech spec
+
+### Perlu Ditambahkan (Gaps)
+1. **Auth system** - Tidak ada user accounts
+2. **AI integration** - Tidak ada Gemini/OpenAI
+3. **Code execution** - Tidak ada sandbox untuk run kode
+4. **Advanced features** - Security Scanner, Copilot Poisoning belum ada
+5. **Real leaderboard** - Masih static seed data
+
+### Prioritas Implementasi
+
+**High Priority:**
+1. Authentication system (register, login, JWT)
+2. Code execution sandbox (Judge0/Piston)
+3. AI integration (Gemini/OpenAI)
+
+**Medium Priority:**
+4. Security Scanner task
+5. Copilot Poisoning
+6. AI Code Review Post-Game
+
+**Low Priority:**
+7. Category-specific leaderboard
+8. Redis untuk session caching
+9. Advanced editor features (cursor presence, OT/CRDT)
