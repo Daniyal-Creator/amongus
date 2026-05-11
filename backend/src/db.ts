@@ -111,6 +111,15 @@ export async function initDatabase() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS session_imposter_messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      user_name TEXT NOT NULL,
+      color TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS session_category_votes (
       session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
       player_id TEXT NOT NULL REFERENCES lobby_players(id) ON DELETE CASCADE,

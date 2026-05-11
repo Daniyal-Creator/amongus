@@ -23,6 +23,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const [chatDraft, setChatDraft] = useState("");
   const sessionConnectionRef = useRef<ReturnType<typeof connectSession> | null>(null);
   const editorSyncTimerRef = useRef<number | null>(null);
+  const pendingEditorContentRef = useRef<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [roleRevealStage, setRoleRevealStage] = useState<"hidden" | "assigning" | "revealed">("hidden");
   const hasShownRoleRef = useRef(false);
@@ -37,6 +38,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
         if (!cancelled) {
           setSnapshot(nextSnapshot);
           setEditorContent(nextSnapshot.editorContent);
+          pendingEditorContentRef.current = null;
           setLoadError(null);
         }
       } catch (caughtError) {
@@ -53,7 +55,12 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       onSnapshot: (nextSnapshot) => {
         if (!cancelled) {
           setSnapshot(nextSnapshot);
-          setEditorContent(nextSnapshot.editorContent);
+          if (pendingEditorContentRef.current === nextSnapshot.editorContent) {
+            pendingEditorContentRef.current = null;
+          }
+          if (pendingEditorContentRef.current === null) {
+            setEditorContent(nextSnapshot.editorContent);
+          }
           setLoadError(null);
         }
       },
@@ -107,6 +114,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
   function handleEditorChange(nextValue: string) {
     setEditorContent(nextValue);
+    pendingEditorContentRef.current = nextValue;
 
     if (editorSyncTimerRef.current !== null) {
       window.clearTimeout(editorSyncTimerRef.current);
@@ -165,6 +173,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
     : [...snapshot.imposterFeed, ...snapshot.chatMessages];
   const actionDisabled = snapshot.phase !== "playing";
   const editorLang = snapshot.challenge.language || "javascript";
+  const displayTime = snapshot.timeRemaining.replace(/s$/, " detik");
 
   function handlePrimaryAction() {
     if (isCivilian) {
@@ -181,8 +190,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
   return (
     <>
-      <main className="min-h-screen bg-[#0b1418] px-3 py-4 text-[color:var(--foreground)] sm:px-6">
-        <section className="mx-auto max-w-[1500px]">
+      <main className="min-h-screen bg-[#0b1418] px-3 py-3 text-[color:var(--foreground)] sm:px-5">
+        <section className="mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[1800px] flex-col">
           {/* Header bar */}
           <div className="pixel-panel mb-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3">
             <div className="flex flex-wrap items-center gap-3">
@@ -203,7 +212,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
           </div>
 
           {/* Main 3-column layout */}
-          <section className="grid min-h-[760px] grid-cols-1 gap-0 border-4 border-[color:var(--brown)] bg-[color:var(--cream)] xl:grid-cols-[220px_1fr_240px]">
+          <section className="grid flex-1 grid-cols-1 gap-0 border-4 border-[color:var(--brown)] bg-[color:var(--cream)] xl:grid-cols-[260px_minmax(0,1fr)_280px]">
             {/* Left sidebar: players + objectives */}
             <aside className="border-b-4 border-[color:var(--brown)] p-4 xl:border-r-4 xl:border-b-0">
               <h2 className="text-2xl">Players</h2>
@@ -282,7 +291,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                   type="button"
                   onClick={handlePrimaryAction}
                   disabled={actionDisabled || (!isCivilian && snapshot.sabotageCharges <= 0)}
-                  className={`pixel-button shrink-0 ml-3 ${isCivilian ? "pixel-button-danger" : "bg-[#a43b57] text-[#fff0ef] border-4 border-[color:var(--brown-dark)] shadow-[inset_0_0_0_4px_#d66b85,0_4px_0_0_rgba(0,0,0,0.2)]"} ${actionDisabled ? "opacity-60" : ""}`}
+                  className={`pixel-button pixel-button-danger shrink-0 ml-3 ${actionDisabled ? "opacity-60" : ""}`}
                 >
                   {primaryActionLabel}
                 </button>
@@ -295,7 +304,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                 <div className="border-b-4 border-[color:var(--brown)] px-2 py-3 text-center text-base xl:text-lg shrink-0 leading-tight">
                   {rightPanelTitle}
                 </div>
-                <div className="p-3 flex-1 overflow-y-auto max-h-[620px]">
+                <div className="p-3 flex-1 overflow-y-auto">
                   {rightMessages.length === 0 ? (
                     <p className="pixel-small text-center text-[color:var(--text-muted)]">
                       No messages yet...
@@ -344,19 +353,24 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       {/* Category Vote Overlay */}
       {snapshot.phase === "category" ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black px-4 text-center">
-          <div className="max-w-3xl">
-            <p className="pixel-title text-4xl sm:text-6xl">VOTE CATEGORY</p>
-            <p className="pixel-small mt-3 text-white/70">Round {snapshot.round} of {snapshot.maxRounds}</p>
-            <div className="pixel-panel mt-8 w-full min-w-[300px] max-w-[520px] p-5 sm:p-6">
-              <div className="mb-5 flex items-center justify-between gap-3">
-                <p className="text-left text-xl">Choose challenge type</p>
-                <div className="pixel-panel px-3 py-2 text-xl">
-                  {snapshot.currentCategoryVote ? "VOTED" : "OPEN"}
+            <div className="w-full max-w-6xl">
+              <p className="pixel-title text-4xl sm:text-6xl">VOTE CATEGORY</p>
+              <p className="pixel-small mt-3 text-white/70">Round {snapshot.round} of {snapshot.maxRounds}</p>
+              <div className="pixel-panel mt-8 w-full p-5 sm:p-6">
+                <div className="mb-5 flex flex-col items-center justify-between gap-3 sm:flex-row">
+                  <div className="text-center sm:text-left">
+                    <p className="text-xl">Choose challenge type</p>
+                    <p className="pixel-small mt-1 text-[color:var(--text-muted)]">
+                      Pilih dalam 10 detik. Jika seri, challenge akan diacak.
+                    </p>
+                  </div>
+                  <div className="pixel-panel min-w-[120px] px-3 py-2 text-center text-xl">
+                    {displayTime}
+                  </div>
                 </div>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {snapshot.categoryVoteOptions.map((category) => (
-                  <button
+                <div className="grid gap-3 lg:grid-cols-4">
+                  {snapshot.categoryVoteOptions.map((category) => (
+                    <button
                     key={category.slug}
                     type="button"
                     onClick={() =>
@@ -365,9 +379,9 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                         categorySlug: category.slug,
                       })
                     }
-                    className={`pixel-panel flex flex-col px-4 py-3 text-left ${
-                      snapshot.currentCategoryVote === category.slug ? "bg-[#9bc8dd]" : "bg-[#fff8ea]"
-                    }`}
+                      className={`pixel-panel flex min-h-[156px] flex-col px-4 py-3 text-left ${
+                        snapshot.currentCategoryVote === category.slug ? "bg-[#9bc8dd]" : "bg-[#fff8ea]"
+                      }`}
                   >
                     <div className="flex items-center justify-between w-full">
                       <span className="pixel-small pr-3 font-bold">{category.name}</span>
@@ -380,7 +394,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                 ))}
               </div>
               <p className="pixel-small mt-5 text-[color:var(--text-muted)]">
-                Semua pemain vote dulu. Server akan lock kategori dengan suara tertinggi.
+                Jika tidak semua pemain vote sampai timer habis, kategori dengan vote terbanyak yang dipilih.
               </p>
             </div>
           </div>

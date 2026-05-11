@@ -6,4 +6,5 @@ export const config = {
     host: process.env.HOST ?? DEFAULT_HOST,
     databaseUrl: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
     corsOrigin: process.env.CORS_ORIGIN ?? true,
+    mockMode: (process.env.MOCK_MODE ?? "").toUpperCase() === "ENABLE",
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import { EditorState } from "@codemirror/state";
+import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
@@ -161,12 +161,23 @@ export function CodeEditor({ value, language, disabled, onChange }: CodeEditorPr
     }
 
     isExternalUpdate.current = true;
+    const nextLength = value.length;
+    const selection = EditorSelection.create(
+      view.state.selection.ranges.map((range) =>
+        EditorSelection.range(
+          Math.min(range.anchor, nextLength),
+          Math.min(range.head, nextLength),
+        ),
+      ),
+      view.state.selection.mainIndex,
+    );
     view.dispatch({
       changes: {
         from: 0,
         to: currentContent.length,
         insert: value,
       },
+      selection,
     });
     isExternalUpdate.current = false;
   }, [value]);

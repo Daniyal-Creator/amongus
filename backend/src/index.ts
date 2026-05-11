@@ -17,6 +17,7 @@ const PLAYER_TITLES = [
 ] as const;
 
 const ROUND_DURATION_SECONDS = 120;
+const CATEGORY_VOTE_DURATION_SECONDS = 10;
 const CHAT_RATE_LIMIT_WINDOW_MS = 10_000;
 const CHAT_RATE_LIMIT_MAX = 10;
 
@@ -205,6 +206,8 @@ type ChatRow = {
   message: string;
   created_at: Date;
 };
+
+type ImposterMessageRow = ChatRow;
 
 type CategoryVoteRow = {
   player_id: string;
@@ -404,7 +407,7 @@ async function getSessionSnapshot(sessionId: string, playerId?: string) {
     return null;
   }
 
-  const [playersResult, categories, challengeResult, chatMessagesResult, categoryVotesResult, meetingVotesResult] = await Promise.all([
+  const [playersResult, categories, challengeResult, chatMessagesResult, imposterMessagesResult, categoryVotesResult, meetingVotesResult] = await Promise.all([
     query<{
       id: string;
       name: string;
@@ -436,6 +439,15 @@ async function getSessionSnapshot(sessionId: string, playerId?: string) {
       `
         SELECT user_name, color, message, created_at
         FROM session_chat_messages
+        WHERE session_id = $1
+        ORDER BY created_at ASC
+      `,
+      [session.id],
+    ),
+    query<ImposterMessageRow>(
+      `
+        SELECT user_name, color, message, created_at
+        FROM session_imposter_messages
         WHERE session_id = $1
         ORDER BY created_at ASC
       `,
@@ -520,7 +532,22 @@ async function getSessionSnapshot(sessionId: string, playerId?: string) {
       timestamp: formatTimestamp(message.created_at),
       message: message.message,
     })),
-    imposterFeed: challenge.imposter_feed,
+    imposterFeed: isCivilian
+      ? []
+      : [
+          ...(challenge.imposter_feed as Array<{
+            user: string;
+            color: string;
+            timestamp?: string;
+            message: string;
+          }>),
+          ...imposterMessagesResult.rows.map((message) => ({
+            user: message.user_name,
+            color: message.color,
+            timestamp: formatTimestamp(message.created_at),
+            message: message.message,
+          })),
+        ],
     editorContent: session.editor_content,
     editorLines: contentToEditorLines(session.editor_content),
     currentCategoryVote:
@@ -682,6 +709,16 @@ async function appendSystemMessage(sessionId: string, message: string) {
   );
 }
 
+async function appendImposterMessage(sessionId: string, message: string) {
+  await query(
+    `
+      INSERT INTO session_imposter_messages (id, session_id, user_name, color, message)
+      VALUES ($1, $2, 'ghost.ai', '#ff688b', $3)
+    `,
+    [createId(), sessionId, message],
+  );
+}
+
 /* ────────────── Game logic ────────────── */
 
 async function finishGame(
@@ -764,7 +801,7 @@ async function advanceToNextRound(sessionId: string) {
           meeting_snippet = ''
       WHERE id = $1
     `,
-    [sessionId, nextRound, ROUND_DURATION_SECONDS],
+    [sessionId, nextRound, CATEGORY_VOTE_DURATION_SECONDS],
   );
   await query(`DELETE FROM session_category_votes WHERE session_id = $1`, [sessionId]);
   await query(`DELETE FROM session_meeting_votes WHERE session_id = $1`, [sessionId]);
@@ -775,15 +812,90 @@ async function advanceToNextRound(sessionId: string) {
   await publishSession(sessionId);
 }
 
-async function tickPlayingSessions() {
+async function resolveCategoryVote(sessionId: string) {
+  const sessionResult = await query<{
+    phase: "category" | "playing" | "meeting" | "game_over";
+    round: number;
+  }>(
+    `
+      SELECT phase, round
+      FROM sessions
+      WHERE id = $1
+    `,
+    [sessionId],
+  );
+  const session = sessionResult.rows[0];
+  if (!session || session.phase !== "category") {
+    return;
+  }
+
+  const [votesResult, categories] = await Promise.all([
+    query<{ category_slug: string }>(
+      `
+        SELECT category_slug
+        FROM session_category_votes
+        WHERE session_id = $1
+      `,
+      [sessionId],
+    ),
+    getCategories(),
+  ]);
+
+  const counts = new Map<string, number>();
+  for (const vote of votesResult.rows) {
+    counts.set(vote.category_slug, (counts.get(vote.category_slug) ?? 0) + 1);
+  }
+
+  const ranked = [...counts.entries()].sort((left, right) => right[1] - left[1]);
+  const topScore = ranked[0]?.[1] ?? 0;
+  const tiedSlugs =
+    topScore > 0
+      ? ranked.filter((entry) => entry[1] === topScore).map((entry) => entry[0])
+      : categories.map((category) => category.slug);
+  const selectedCategorySlug = tiedSlugs[randomInt(0, tiedSlugs.length)];
+  const nextChallenge = await resolveChallengeForCategory(selectedCategorySlug, session.round);
+
+  if (!nextChallenge) {
+    return;
+  }
+
+  await query(
+    `
+      UPDATE sessions
+      SET category_slug = $2,
+          challenge_id = $3,
+          phase = 'playing',
+          editor_content = $4,
+          time_remaining_seconds = $5
+      WHERE id = $1 AND phase = 'category'
+    `,
+    [
+      sessionId,
+      selectedCategorySlug,
+      nextChallenge.id,
+      editorLinesToContent(nextChallenge.editor_lines),
+      ROUND_DURATION_SECONDS,
+    ],
+  );
+
+  const tieNote = tiedSlugs.length > 1 ? " Tie detected, challenge randomized." : "";
+  await appendSystemMessage(
+    sessionId,
+    `Category locked: ${selectedCategorySlug.toUpperCase()}. Round ${session.round} started.${tieNote}`,
+  );
+  await publishSession(sessionId);
+}
+
+async function tickActiveSessions() {
   const sessionsResult = await query<{
     id: string;
+    phase: "category" | "playing";
     time_remaining_seconds: number;
   }>(
     `
-      SELECT id, time_remaining_seconds
+      SELECT id, phase, time_remaining_seconds
       FROM sessions
-      WHERE phase = 'playing'
+      WHERE phase IN ('category', 'playing')
     `,
   );
 
@@ -798,7 +910,12 @@ async function tickPlayingSessions() {
       [session.id, nextTime],
     );
 
-    if (nextTime === 0) {
+    if (nextTime === 0 && session.phase === "category") {
+      await resolveCategoryVote(session.id);
+      continue;
+    }
+
+    if (nextTime === 0 && session.phase === "playing") {
       await advanceToNextRound(session.id);
       continue;
     }
@@ -999,47 +1116,7 @@ app.get<{
 
           const totalPlayers = Number(playersResult.rows[0]?.count ?? "0");
           if (votesResult.rows.length >= totalPlayers && totalPlayers > 0) {
-            const counts = new Map<string, number>();
-            for (const vote of votesResult.rows) {
-              counts.set(vote.category_slug, (counts.get(vote.category_slug) ?? 0) + 1);
-            }
-
-            const ranked = [...counts.entries()].sort((left, right) => right[1] - left[1]);
-            const topScore = ranked[0]?.[1] ?? 0;
-            const candidates = ranked
-              .filter((entry) => entry[1] === topScore)
-              .map((entry) => entry[0]);
-            const selectedCategorySlug = candidates[randomInt(0, candidates.length)];
-            const nextChallenge = await resolveChallengeForCategory(
-              selectedCategorySlug,
-              sessionMeta.round,
-            );
-
-            if (nextChallenge) {
-              await query(
-                `
-                  UPDATE sessions
-                  SET category_slug = $2,
-                      challenge_id = $3,
-                      phase = 'playing',
-                      editor_content = $4,
-                      time_remaining_seconds = $5
-                  WHERE id = $1
-                `,
-                [
-                  sessionId,
-                  selectedCategorySlug,
-                  nextChallenge.id,
-                  editorLinesToContent(nextChallenge.editor_lines),
-                  ROUND_DURATION_SECONDS,
-                ],
-              );
-
-              await appendSystemMessage(
-                sessionId,
-                `Category locked: ${selectedCategorySlug.toUpperCase()}. Round ${sessionMeta.round} started.`,
-              );
-            }
+            await resolveCategoryVote(sessionId);
           }
         }
 
@@ -1242,8 +1319,8 @@ app.get<{
             sessionId,
             `⚡ A sabotage wave just hit the code. Something changed...`,
           );
+          await appendImposterMessage(sessionId, `Sabotage applied: ${mutation.description}.`);
 
-          // Log to imposter's feed via a chat message only they'll see
           app.log.info({ sessionId, mutation: mutation.name, description: mutation.description }, "Sabotage applied");
 
           const remainingCharges = sessionMeta.sabotage_charges - 1;
@@ -1614,7 +1691,15 @@ app.post<{
           )
           VALUES ($1, $2, $3, $4, 'category', 1, $5, 5, $6, $7)
         `,
-        [sessionId, lobby.id, challenge.id, category.slug, maxRounds, ROUND_DURATION_SECONDS, initialEditorContent],
+        [
+          sessionId,
+          lobby.id,
+          challenge.id,
+          category.slug,
+          maxRounds,
+          CATEGORY_VOTE_DURATION_SECONDS,
+          initialEditorContent,
+        ],
       );
 
       for (const [index, player] of lobby.players.entries()) {
@@ -1699,7 +1784,7 @@ async function start() {
       await initDatabase();
     }
     sessionTickInterval = setInterval(() => {
-      void tickPlayingSessions();
+      void tickActiveSessions();
     }, 1000);
     await app.listen({
       host: config.host,

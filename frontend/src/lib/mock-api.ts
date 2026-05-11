@@ -10,6 +10,8 @@ import type {
 } from "@/types";
 
 const STORE_KEY = "code-mafia:mock-store:v1";
+const CATEGORY_VOTE_DURATION_SECONDS = 10;
+const ROUND_DURATION_SECONDS = 120;
 const COLOR_PALETTE = ["#14f59b", "#ffd95a", "#6da8ff", "#ff688b", "#ff9f43"];
 const PLAYER_TITLES = [
   "Host / Frontend Fixer",
@@ -304,6 +306,7 @@ const CHALLENGES: Record<string, MockChallenge> = {
 
 const lobbyListeners = new Map<string, Set<SnapshotListener<LobbySnapshot>>>();
 const sessionListeners = new Map<string, Set<SnapshotListener<GameSnapshot>>>();
+const sessionTimers = new Map<string, ReturnType<typeof setInterval>>();
 
 function parseTimestamp(date = new Date()) {
   return new Intl.DateTimeFormat("id-ID", {
@@ -524,6 +527,30 @@ function notifySession(sessionId: string) {
   }
 }
 
+function startSessionTimer(sessionId: string) {
+  if (sessionTimers.has(sessionId)) {
+    return;
+  }
+
+  sessionTimers.set(
+    sessionId,
+    setInterval(() => {
+      withStore((store) => {
+        const session = store.sessions[sessionId];
+        if (!session || session.phase === "meeting" || session.phase === "game_over") {
+          return;
+        }
+
+        session.timeRemainingSeconds = Math.max(0, session.timeRemainingSeconds - 1);
+        if (session.timeRemainingSeconds === 0 && session.phase === "category") {
+          resolveCategory(session);
+        }
+      });
+      notifySession(sessionId);
+    }, 1000),
+  );
+}
+
 function appendChat(target: ChatMessage[], user: string, color: string, message: string) {
   target.push({
     user,
@@ -533,16 +560,6 @@ function appendChat(target: ChatMessage[], user: string, color: string, message:
   });
 }
 
-function resolveBotVotes(session: MockSessionRecord, preferredSlug: string) {
-  for (const player of session.players) {
-    if (session.categoryVotes[player.id]) {
-      continue;
-    }
-
-    session.categoryVotes[player.id] = player.role === "imposter" ? "algorithms-lite" : preferredSlug;
-  }
-}
-
 function resolveCategory(session: MockSessionRecord) {
   const ranked = Object.entries(
     Object.values(session.categoryVotes).reduce<Record<string, number>>((counts, slug) => {
@@ -550,15 +567,25 @@ function resolveCategory(session: MockSessionRecord) {
       return counts;
     }, {}),
   ).sort((left, right) => right[1] - left[1]);
-  const winningSlug = ranked[0]?.[0] ?? session.categorySlug;
+  const topScore = ranked[0]?.[1] ?? 0;
+  const candidates =
+    topScore > 0
+      ? ranked.filter((entry) => entry[1] === topScore).map((entry) => entry[0])
+      : CATEGORIES.map((category) => category.slug);
+  const winningSlug = candidates[Math.floor(Math.random() * candidates.length)] ?? session.categorySlug;
   const nextChallenge = CHALLENGES[winningSlug] ?? CHALLENGES.oop;
 
   session.phase = "playing";
   session.categorySlug = winningSlug;
   session.challenge = clone(nextChallenge);
   session.editorContent = nextChallenge.editorContent;
-  session.timeRemainingSeconds = 120;
-  appendChat(session.chatMessages, "system", "#f0a92e", `Category locked: ${winningSlug.toUpperCase()}. Round started.`);
+  session.timeRemainingSeconds = ROUND_DURATION_SECONDS;
+  appendChat(
+    session.chatMessages,
+    "system",
+    "#f0a92e",
+    `Category locked: ${winningSlug.toUpperCase()}. Round started.${candidates.length > 1 ? " Tie detected, challenge randomized." : ""}`,
+  );
 }
 
 function resolveMeeting(session: MockSessionRecord, currentPlayerId: string) {
@@ -627,20 +654,20 @@ function resolveMeeting(session: MockSessionRecord, currentPlayerId: string) {
   session.phase = "playing";
 }
 
-function applySabotage(code: string) {
+function applySabotage(code: string): { code: string; description: string } {
   if (code.includes("===")) {
-    return code.replace("===", "==");
+    return { code: code.replace("===", "=="), description: "Changed === to ==." };
   }
   if (code.includes("return []")) {
-    return code.replace("return []", "return items");
+    return { code: code.replace("return []", "return items"), description: "Changed an empty return into returning items." };
   }
   if (code.includes("len(nums) - 1")) {
-    return code.replace("len(nums) - 1", "len(nums)");
+    return { code: code.replace("len(nums) - 1", "len(nums)"), description: "Shifted len(nums) - 1 to len(nums)." };
   }
   if (code.includes("last[1] = current[1]")) {
-    return code.replace("last[1] = current[1]", "last[1] = last[0]");
+    return { code: code.replace("last[1] = current[1]", "last[1] = last[0]"), description: "Changed interval merge assignment." };
   }
-  return code.replace("+=", "-=");
+  return { code: code.replace("+=", "-="), description: "Changed += to -=." };
 }
 
 function createSessionFromLobby(store: MockStore, lobby: MockLobbyRecord): MockSessionRecord {
@@ -661,7 +688,7 @@ function createSessionFromLobby(store: MockStore, lobby: MockLobbyRecord): MockS
     maxRounds: 4,
     categorySlug: "oop",
     phase: "category",
-    timeRemainingSeconds: 120,
+    timeRemainingSeconds: CATEGORY_VOTE_DURATION_SECONDS,
     sabotageCharges: 5,
     players,
     challenge,
@@ -868,6 +895,7 @@ export function subscribeMockSession(
   };
   listeners.add(wrappedListener);
   sessionListeners.set(sessionId, listeners);
+  startSessionTimer(sessionId);
   wrappedListener();
 
   return () => {
@@ -909,8 +937,10 @@ export async function sendMockSessionMessage(
 
     if (payload.type === "category.vote" && session.phase === "category") {
       session.categoryVotes[currentPlayer.id] = payload.categorySlug;
-      resolveBotVotes(session, payload.categorySlug);
-      resolveCategory(session);
+      const activePlayers = session.players.filter((player) => !player.status.includes("ejected"));
+      if (Object.keys(session.categoryVotes).length >= activePlayers.length) {
+        resolveCategory(session);
+      }
     }
 
     if (payload.type === "meeting.start" && session.phase === "playing") {
@@ -937,8 +967,10 @@ export async function sendMockSessionMessage(
       }
 
       session.sabotageCharges -= 1;
-      session.editorContent = applySabotage(session.editorContent);
+      const sabotage = applySabotage(session.editorContent);
+      session.editorContent = sabotage.code;
       currentPlayer.status = "used sabotage charge";
+      appendChat(session.imposterFeed, "ghost.ai", "#ff688b", `Sabotage applied: ${sabotage.description}`);
       appendChat(
         session.chatMessages,
         "system",

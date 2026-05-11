@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import { config } from "./config.js";
 import { createId, initDatabase, inTransaction, pool, query } from "./db.js";
+/* ────────────── Constants ────────────── */
 const COLOR_PALETTE = ["#14f59b", "#ffd95a", "#6da8ff", "#ff688b", "#ff9f43"];
 const PLAYER_TITLES = [
     "Host / Frontend Fixer",
@@ -12,12 +13,149 @@ const PLAYER_TITLES = [
     "Quiet Contributor",
     "Night Reviewer",
 ];
+const ROUND_DURATION_SECONDS = 120;
+const CATEGORY_VOTE_DURATION_SECONDS = 10;
+const CHAT_RATE_LIMIT_WINDOW_MS = 10_000;
+const CHAT_RATE_LIMIT_MAX = 10;
+/* ────────────── Sabotage mutations ────────────── */
+const SABOTAGE_MUTATIONS = [
+    {
+        name: "strict_to_loose",
+        description: "Changed === to == (strict → loose equality)",
+        apply: (code) => code.replace(/===/, "=="),
+    },
+    {
+        name: "loose_to_strict",
+        description: "Changed == to === (loose → strict equality)",
+        apply: (code) => code.replace(/([^!=<>])={2}([^=])/, "$1===$2"),
+    },
+    {
+        name: "less_to_leq",
+        description: "Changed < to <= (off-by-one in loop)",
+        apply: (code) => {
+            const match = code.match(/(\w+)\s*<\s*(\w+)\.(length|size|count)/);
+            if (match) {
+                return code.replace(match[0], match[0].replace("<", "<="));
+            }
+            return code.replace(/([^<])< /, "$1<= ");
+        },
+    },
+    {
+        name: "greater_to_geq",
+        description: "Changed > to >= (boundary condition shift)",
+        apply: (code) => {
+            const match = code.match(/([^>])> /);
+            if (match) {
+                return code.replace(match[0], match[0].replace("> ", ">= "));
+            }
+            return code;
+        },
+    },
+    {
+        name: "plus_to_minus",
+        description: "Changed += to -= (accumulator direction reversed)",
+        apply: (code) => {
+            const lines = code.split("\n");
+            for (let i = lines.length - 1; i >= 0; i--) {
+                if (lines[i].includes("+=") && !lines[i].includes("self.length") && !lines[i].includes("size")) {
+                    lines[i] = lines[i].replace("+=", "-=");
+                    break;
+                }
+            }
+            return lines.join("\n");
+        },
+    },
+    {
+        name: "swap_return",
+        description: "Changed return value to return None/null",
+        apply: (code) => {
+            const lines = code.split("\n");
+            for (let i = lines.length - 1; i >= 0; i--) {
+                if (/return\s+\w/.test(lines[i]) && !lines[i].includes("return None") && !lines[i].includes("return null") && !lines[i].includes("return False")) {
+                    if (code.includes("def ")) {
+                        lines[i] = lines[i].replace(/return\s+.+/, "return None");
+                    }
+                    else {
+                        lines[i] = lines[i].replace(/return\s+.+/, "return null;");
+                    }
+                    break;
+                }
+            }
+            return lines.join("\n");
+        },
+    },
+    {
+        name: "swap_increment",
+        description: "Changed i++ to i-- (loop direction reversed)",
+        apply: (code) => {
+            const lines = code.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].includes("++") && lines[i].includes("i") && !lines[i].includes("//")) {
+                    lines[i] = lines[i].replace("++", "--");
+                    break;
+                }
+            }
+            return lines.join("\n");
+        },
+    },
+    {
+        name: "comment_out_line",
+        description: "Commented out a critical line",
+        apply: (code) => {
+            const lines = code.split("\n");
+            const candidates = lines
+                .map((line, index) => ({ line: line.trim(), index }))
+                .filter((item) => item.line.length > 5 &&
+                !item.line.startsWith("//") &&
+                !item.line.startsWith("#") &&
+                !item.line.startsWith("class ") &&
+                !item.line.startsWith("def ") &&
+                !item.line.startsWith("function ") &&
+                !item.line.startsWith("export ") &&
+                !item.line.startsWith("{") &&
+                !item.line.startsWith("}") &&
+                (item.line.includes("return") || item.line.includes("self.") || item.line.includes("result") || item.line.includes("push")));
+            if (candidates.length > 0) {
+                const target = candidates[randomInt(0, candidates.length)];
+                const prefix = code.includes("def ") ? "# " : "// ";
+                const indent = lines[target.index].match(/^(\s*)/)?.[1] ?? "";
+                lines[target.index] = `${indent}${prefix}${lines[target.index].trim()}`;
+            }
+            return lines.join("\n");
+        },
+    },
+];
+function applySabotage(code) {
+    const shuffled = [...SABOTAGE_MUTATIONS].sort(() => Math.random() - 0.5);
+    for (const mutation of shuffled) {
+        const result = mutation.apply(code);
+        if (result !== code) {
+            return { mutatedCode: result, mutation };
+        }
+    }
+    return { mutatedCode: code, mutation: shuffled[0] };
+}
+/* ────────────── Chat rate limiter ────────────── */
+const chatRateMap = new Map();
+function checkChatRateLimit(playerId) {
+    const now = Date.now();
+    const timestamps = chatRateMap.get(playerId) ?? [];
+    const recent = timestamps.filter((t) => now - t < CHAT_RATE_LIMIT_WINDOW_MS);
+    if (recent.length >= CHAT_RATE_LIMIT_MAX) {
+        return false;
+    }
+    recent.push(now);
+    chatRateMap.set(playerId, recent);
+    return true;
+}
+/* ────────────── Server setup ────────────── */
 const app = Fastify({
     logger: true,
 });
 const lobbySubscribers = new Map();
 const sessionSubscribers = new Map();
 let sessionTickInterval = null;
+/* ────────────── Helpers ────────────── */
 function createCode() {
     const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     return Array.from({ length: 6 }, () => alphabet[randomInt(0, alphabet.length)]).join("");
@@ -54,6 +192,7 @@ function normalizePlayer(player) {
         isHost: player.is_host,
     };
 }
+/* ────────────── Data access ────────────── */
 async function getCategories() {
     const result = await query(`
       SELECT slug, name, description, round_estimate
@@ -119,19 +258,9 @@ async function getLobbySnapshot(code) {
 async function getSessionSnapshot(sessionId, playerId) {
     const sessionResult = await query(`
       SELECT
-        id,
-        challenge_id,
-        category_slug,
-        phase,
-        round,
-        max_rounds,
-        sabotage_charges,
-        time_remaining_seconds,
-        editor_content,
-        meeting_started_by,
-        meeting_snippet,
-        winner_team,
-        end_reason
+        id, challenge_id, category_slug, phase, round, max_rounds,
+        sabotage_charges, time_remaining_seconds, editor_content,
+        meeting_started_by, meeting_snippet, winner_team, end_reason
       FROM sessions
       WHERE id = $1
     `, [sessionId]);
@@ -139,7 +268,7 @@ async function getSessionSnapshot(sessionId, playerId) {
     if (!session) {
         return null;
     }
-    const [playersResult, categories, challengeResult, chatMessagesResult, categoryVotesResult, meetingVotesResult] = await Promise.all([
+    const [playersResult, categories, challengeResult, chatMessagesResult, imposterMessagesResult, categoryVotesResult, meetingVotesResult] = await Promise.all([
         query(`
         SELECT lp.id, lp.name, lp.color, sp.role, sp.status
         FROM session_players sp
@@ -149,25 +278,21 @@ async function getSessionSnapshot(sessionId, playerId) {
       `, [session.id]),
         getCategories(),
         query(`
-        SELECT
-          id,
-          title,
-          description,
-          language,
-          difficulty,
-          round_number,
-          tests,
-          objectives,
-          imposter_objectives,
-          chat_messages,
-          imposter_feed,
-          editor_lines
+        SELECT id, title, description, language, difficulty, round_number,
+               tests, objectives, imposter_objectives, chat_messages,
+               imposter_feed, editor_lines
         FROM challenges
         WHERE id = $1
       `, [session.challenge_id]),
         query(`
         SELECT user_name, color, message, created_at
         FROM session_chat_messages
+        WHERE session_id = $1
+        ORDER BY created_at ASC
+      `, [session.id]),
+        query(`
+        SELECT user_name, color, message, created_at
+        FROM session_imposter_messages
         WHERE session_id = $1
         ORDER BY created_at ASC
       `, [session.id]),
@@ -233,7 +358,17 @@ async function getSessionSnapshot(sessionId, playerId) {
             timestamp: formatTimestamp(message.created_at),
             message: message.message,
         })),
-        imposterFeed: challenge.imposter_feed,
+        imposterFeed: isCivilian
+            ? []
+            : [
+                ...challenge.imposter_feed,
+                ...imposterMessagesResult.rows.map((message) => ({
+                    user: message.user_name,
+                    color: message.color,
+                    timestamp: formatTimestamp(message.created_at),
+                    message: message.message,
+                })),
+            ],
         editorContent: session.editor_content,
         editorLines: contentToEditorLines(session.editor_content),
         currentCategoryVote: categoryVotes.find((vote) => vote.player_id === currentPlayer?.id)?.category_slug ?? null,
@@ -261,28 +396,31 @@ async function getSessionPlayerIdentity(sessionId, playerId) {
     `, [sessionId, playerId]);
     return result.rows[0] ?? null;
 }
-async function resolveChallengeForCategory(categorySlug) {
+async function resolveChallengeForCategory(categorySlug, roundNumber) {
     const result = await query(`
-      SELECT
-        id,
-        title,
-        description,
-        language,
-        difficulty,
-        round_number,
-        tests,
-        objectives,
-        imposter_objectives,
-        chat_messages,
-        imposter_feed,
-        editor_lines
+      SELECT id, title, description, language, difficulty, round_number,
+             tests, objectives, imposter_objectives, chat_messages,
+             imposter_feed, editor_lines
+      FROM challenges
+      WHERE category_slug = $1 AND round_number = $2
+      LIMIT 1
+    `, [categorySlug, roundNumber]);
+    if (result.rows[0]) {
+        return result.rows[0];
+    }
+    // Fallback: get any challenge for this category
+    const fallback = await query(`
+      SELECT id, title, description, language, difficulty, round_number,
+             tests, objectives, imposter_objectives, chat_messages,
+             imposter_feed, editor_lines
       FROM challenges
       WHERE category_slug = $1
       ORDER BY round_number ASC
       LIMIT 1
     `, [categorySlug]);
-    return result.rows[0] ?? null;
+    return fallback.rows[0] ?? null;
 }
+/* ────────────── Realtime ────────────── */
 function registerSocket(collection, key, socket) {
     const current = collection.get(key) ?? new Set();
     current.add(socket);
@@ -346,6 +484,13 @@ async function appendSystemMessage(sessionId, message) {
       VALUES ($1, $2, NULL, 'system', '#f0a92e', $3)
     `, [createId(), sessionId, message]);
 }
+async function appendImposterMessage(sessionId, message) {
+    await query(`
+      INSERT INTO session_imposter_messages (id, session_id, user_name, color, message)
+      VALUES ($1, $2, 'ghost.ai', '#ff688b', $3)
+    `, [createId(), sessionId, message]);
+}
+/* ────────────── Game logic ────────────── */
 async function finishGame(sessionId, winnerTeam, reason) {
     const lobbyResult = await query(`
       SELECT l.code, s.lobby_id
@@ -374,7 +519,7 @@ async function finishGame(sessionId, winnerTeam, reason) {
 }
 async function advanceToNextRound(sessionId) {
     const sessionResult = await query(`
-      SELECT round, max_rounds, lobby_id
+      SELECT round, max_rounds, lobby_id, category_slug
       FROM sessions
       WHERE id = $1
     `, [sessionId]);
@@ -386,25 +531,77 @@ async function advanceToNextRound(sessionId) {
         await finishGame(sessionId, "civilian", "Civilian survived until the final round and secured the win.");
         return;
     }
+    const nextRound = session.round + 1;
     await query(`
       UPDATE sessions
       SET phase = 'category',
-          round = round + 1,
-          time_remaining_seconds = 37,
+          round = $2,
+          time_remaining_seconds = $3,
           meeting_started_by = NULL,
           meeting_snippet = ''
       WHERE id = $1
-    `, [sessionId]);
+    `, [sessionId, nextRound, CATEGORY_VOTE_DURATION_SECONDS]);
     await query(`DELETE FROM session_category_votes WHERE session_id = $1`, [sessionId]);
     await query(`DELETE FROM session_meeting_votes WHERE session_id = $1`, [sessionId]);
-    await appendSystemMessage(sessionId, `Round ${session.round + 1} is starting. Vote the next category.`);
+    await appendSystemMessage(sessionId, `Round ${nextRound} is starting. Vote the next category.`);
     await publishSession(sessionId);
 }
-async function tickPlayingSessions() {
-    const sessionsResult = await query(`
-      SELECT id, time_remaining_seconds
+async function resolveCategoryVote(sessionId) {
+    const sessionResult = await query(`
+      SELECT phase, round
       FROM sessions
-      WHERE phase = 'playing'
+      WHERE id = $1
+    `, [sessionId]);
+    const session = sessionResult.rows[0];
+    if (!session || session.phase !== "category") {
+        return;
+    }
+    const [votesResult, categories] = await Promise.all([
+        query(`
+        SELECT category_slug
+        FROM session_category_votes
+        WHERE session_id = $1
+      `, [sessionId]),
+        getCategories(),
+    ]);
+    const counts = new Map();
+    for (const vote of votesResult.rows) {
+        counts.set(vote.category_slug, (counts.get(vote.category_slug) ?? 0) + 1);
+    }
+    const ranked = [...counts.entries()].sort((left, right) => right[1] - left[1]);
+    const topScore = ranked[0]?.[1] ?? 0;
+    const tiedSlugs = topScore > 0
+        ? ranked.filter((entry) => entry[1] === topScore).map((entry) => entry[0])
+        : categories.map((category) => category.slug);
+    const selectedCategorySlug = tiedSlugs[randomInt(0, tiedSlugs.length)];
+    const nextChallenge = await resolveChallengeForCategory(selectedCategorySlug, session.round);
+    if (!nextChallenge) {
+        return;
+    }
+    await query(`
+      UPDATE sessions
+      SET category_slug = $2,
+          challenge_id = $3,
+          phase = 'playing',
+          editor_content = $4,
+          time_remaining_seconds = $5
+      WHERE id = $1 AND phase = 'category'
+    `, [
+        sessionId,
+        selectedCategorySlug,
+        nextChallenge.id,
+        editorLinesToContent(nextChallenge.editor_lines),
+        ROUND_DURATION_SECONDS,
+    ]);
+    const tieNote = tiedSlugs.length > 1 ? " Tie detected, challenge randomized." : "";
+    await appendSystemMessage(sessionId, `Category locked: ${selectedCategorySlug.toUpperCase()}. Round ${session.round} started.${tieNote}`);
+    await publishSession(sessionId);
+}
+async function tickActiveSessions() {
+    const sessionsResult = await query(`
+      SELECT id, phase, time_remaining_seconds
+      FROM sessions
+      WHERE phase IN ('category', 'playing')
     `);
     for (const session of sessionsResult.rows) {
         const nextTime = Math.max(0, session.time_remaining_seconds - 1);
@@ -413,21 +610,27 @@ async function tickPlayingSessions() {
         SET time_remaining_seconds = $2
         WHERE id = $1
       `, [session.id, nextTime]);
-        if (nextTime === 0) {
+        if (nextTime === 0 && session.phase === "category") {
+            await resolveCategoryVote(session.id);
+            continue;
+        }
+        if (nextTime === 0 && session.phase === "playing") {
             await advanceToNextRound(session.id);
             continue;
         }
         await publishSession(session.id);
     }
 }
-app.register(cors, {
+/* ────────────── App ────────────── */
+await app.register(cors, {
     origin: config.corsOrigin,
 });
-app.register(websocket);
+await app.register(websocket);
 app.get("/health", async () => ({ ok: true }));
 app.get("/api/categories", async () => {
     return getCategories();
 });
+/* ────────── WebSocket: Lobby ────────── */
 app.get("/ws/lobbies/:code", { websocket: true }, async (socket, request) => {
     const code = request.params.code.toUpperCase();
     registerSocket(lobbySubscribers, code, socket);
@@ -437,6 +640,7 @@ app.get("/ws/lobbies/:code", { websocket: true }, async (socket, request) => {
         payload: snapshot,
     }));
 });
+/* ────────── WebSocket: Game Session ────────── */
 app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) => {
     const sessionId = request.params.sessionId;
     const realtimeSocket = socket;
@@ -450,12 +654,12 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
                 return;
             }
             const sessionMetaResult = await query(`
-            SELECT phase, sabotage_charges
+            SELECT phase, sabotage_charges, round, category_slug
             FROM sessions
             WHERE id = $1
           `, [sessionId]);
             const sessionMeta = sessionMetaResult.rows[0];
-            if (!sessionMeta) {
+            if (!sessionMeta || sessionMeta.phase === "game_over") {
                 return;
             }
             const playerRoleResult = await query(`
@@ -467,9 +671,13 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
             if (!playerRole) {
                 return;
             }
+            /* ── Chat ── */
             if (data.type === "chat.send") {
                 const nextMessage = data.message.trim();
                 if (!nextMessage) {
+                    return;
+                }
+                if (!checkChatRateLimit(identity.player_id)) {
                     return;
                 }
                 await query(`
@@ -489,6 +697,7 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
               WHERE session_id = $1 AND player_id = $2
             `, [sessionId, identity.player_id]);
             }
+            /* ── Editor ── */
             if (data.type === "editor.update") {
                 if (sessionMeta.phase !== "playing") {
                     return;
@@ -504,6 +713,7 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
               WHERE session_id = $1 AND player_id = $2
             `, [sessionId, identity.player_id]);
             }
+            /* ── Category vote ── */
             if (data.type === "category.vote") {
                 if (sessionMeta.phase !== "category") {
                     return;
@@ -523,42 +733,17 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
                     query(`
                 SELECT COUNT(*)::text AS count
                 FROM session_players
-                WHERE session_id = $1
+                WHERE session_id = $1 AND status != 'ejected after meeting'
               `, [sessionId]),
                 ]);
                 const totalPlayers = Number(playersResult.rows[0]?.count ?? "0");
-                if (votesResult.rows.length === totalPlayers && totalPlayers > 0) {
-                    const counts = new Map();
-                    for (const vote of votesResult.rows) {
-                        counts.set(vote.category_slug, (counts.get(vote.category_slug) ?? 0) + 1);
-                    }
-                    const ranked = [...counts.entries()].sort((left, right) => right[1] - left[1]);
-                    const topScore = ranked[0]?.[1] ?? 0;
-                    const candidates = ranked
-                        .filter((entry) => entry[1] === topScore)
-                        .map((entry) => entry[0]);
-                    const selectedCategorySlug = candidates[randomInt(0, candidates.length)];
-                    const nextChallenge = await resolveChallengeForCategory(selectedCategorySlug);
-                    if (nextChallenge) {
-                        await query(`
-                  UPDATE sessions
-                  SET category_slug = $2,
-                      challenge_id = $3,
-                      phase = 'playing',
-                      editor_content = $4
-                  WHERE id = $1
-                `, [
-                            sessionId,
-                            selectedCategorySlug,
-                            nextChallenge.id,
-                            editorLinesToContent(nextChallenge.editor_lines),
-                        ]);
-                        await appendSystemMessage(sessionId, `Category locked: ${selectedCategorySlug.toUpperCase()}. Round started.`);
-                    }
+                if (votesResult.rows.length >= totalPlayers && totalPlayers > 0) {
+                    await resolveCategoryVote(sessionId);
                 }
             }
+            /* ── Emergency meeting ── */
             if (data.type === "meeting.start") {
-                if (sessionMeta.phase !== "playing" || playerRole !== "civilian") {
+                if (sessionMeta.phase !== "playing") {
                     return;
                 }
                 const currentSession = await query(`
@@ -574,8 +759,9 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
               WHERE id = $1
             `, [sessionId, identity.player_id, currentSession.rows[0]?.editor_content ?? ""]);
                 await query(`DELETE FROM session_meeting_votes WHERE session_id = $1`, [sessionId]);
-                await appendSystemMessage(sessionId, `${identity.user_name} called an emergency meeting.`);
+                await appendSystemMessage(sessionId, `⚠️ ${identity.user_name} called an emergency meeting!`);
             }
+            /* ── Meeting vote ── */
             if (data.type === "meeting.vote") {
                 if (sessionMeta.phase !== "meeting") {
                     return;
@@ -595,7 +781,7 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
                     query(`
                 SELECT COUNT(*)::text AS count
                 FROM session_players
-                WHERE session_id = $1
+                WHERE session_id = $1 AND status != 'ejected after meeting'
               `, [sessionId]),
                     query(`
                 SELECT id, name
@@ -608,7 +794,7 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
               `, [sessionId]),
                 ]);
                 const totalPlayers = Number(playerCountResult.rows[0]?.count ?? "0");
-                if (meetingVotes.rows.length === totalPlayers && totalPlayers > 0) {
+                if (meetingVotes.rows.length >= totalPlayers && totalPlayers > 0) {
                     const counts = new Map();
                     for (const vote of meetingVotes.rows) {
                         counts.set(vote.target_player_id, (counts.get(vote.target_player_id) ?? 0) + 1);
@@ -638,13 +824,26 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
                 WHERE id = $1
               `, [sessionId]);
                     await query(`DELETE FROM session_meeting_votes WHERE session_id = $1`, [sessionId]);
-                    await appendSystemMessage(sessionId, `${ejectedName} received the most votes.`);
+                    await appendSystemMessage(sessionId, `🗳️ ${ejectedName} received the most votes and was ejected.`);
                     if (ejectedRole === "imposter") {
-                        await finishGame(sessionId, "civilian", `${ejectedName} was the impostor. Civilian team wins.`);
+                        await finishGame(sessionId, "civilian", `${ejectedName} was the impostor! Civilian team wins. 🎉`);
+                        return;
+                    }
+                    // Check if all civilians are ejected (imposter wins)
+                    const remainingCivilians = await query(`
+                SELECT COUNT(*)::text AS count
+                FROM session_players
+                WHERE session_id = $1
+                  AND role = 'civilian'
+                  AND status != 'ejected after meeting'
+              `, [sessionId]);
+                    if (Number(remainingCivilians.rows[0]?.count ?? "0") <= 1) {
+                        await finishGame(sessionId, "imposter", "Too many civilians were ejected. Imposter wins! 🔪");
                         return;
                     }
                 }
             }
+            /* ── Sabotage ── */
             if (data.type === "sabotage.use") {
                 if (sessionMeta.phase !== "playing" || playerRole !== "imposter") {
                     return;
@@ -652,19 +851,27 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
                 if (sessionMeta.sabotage_charges <= 0) {
                     return;
                 }
+                // Get current editor content and apply sabotage mutation
+                const editorResult = await query(`SELECT editor_content FROM sessions WHERE id = $1`, [sessionId]);
+                const currentContent = editorResult.rows[0]?.editor_content ?? "";
+                const { mutatedCode, mutation } = applySabotage(currentContent);
                 await query(`
               UPDATE sessions
-              SET sabotage_charges = sabotage_charges - 1
+              SET sabotage_charges = sabotage_charges - 1,
+                  editor_content = $2
               WHERE id = $1
-            `, [sessionId]);
+            `, [sessionId, mutatedCode]);
                 await query(`
               UPDATE session_players
               SET status = 'used sabotage charge'
               WHERE session_id = $1 AND player_id = $2
             `, [sessionId, identity.player_id]);
-                await appendSystemMessage(sessionId, `A sabotage wave just hit the room. Check the code carefully.`);
-                if (sessionMeta.sabotage_charges - 1 <= 0) {
-                    await finishGame(sessionId, "imposter", "Imposter exhausted the sabotage meter before the civilians could stop them.");
+                await appendSystemMessage(sessionId, `⚡ A sabotage wave just hit the code. Something changed...`);
+                await appendImposterMessage(sessionId, `Sabotage applied: ${mutation.description}.`);
+                app.log.info({ sessionId, mutation: mutation.name, description: mutation.description }, "Sabotage applied");
+                const remainingCharges = sessionMeta.sabotage_charges - 1;
+                if (remainingCharges <= 0) {
+                    await finishGame(sessionId, "imposter", "Imposter exhausted all sabotage charges before civilians could stop them. 🔪");
                     return;
                 }
             }
@@ -680,6 +887,7 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
         payload: snapshot,
     }));
 });
+/* ────────── REST: Leaderboard ────────── */
 app.get("/api/leaderboard", async () => {
     const [leaderboardResult, hallOfFameResult] = await Promise.all([
         query(`
@@ -698,6 +906,7 @@ app.get("/api/leaderboard", async () => {
         hallOfFame: hallOfFameResult.rows,
     };
 });
+/* ────────── REST: Create Lobby ────────── */
 app.post("/api/lobbies", {
     schema: {
         body: {
@@ -734,6 +943,7 @@ app.post("/api/lobbies", {
         lobby,
     };
 });
+/* ────────── REST: Join Lobby ────────── */
 app.post("/api/lobbies/:code/join", {
     schema: {
         params: {
@@ -784,6 +994,7 @@ app.post("/api/lobbies/:code/join", {
         playerId,
     };
 });
+/* ────────── REST: Get Lobby ────────── */
 app.get("/api/lobbies/:code", {
     schema: {
         params: {
@@ -802,6 +1013,7 @@ app.get("/api/lobbies/:code", {
     }
     return snapshot;
 });
+/* ────────── REST: Toggle Ready ────────── */
 app.post("/api/lobbies/:code/players/:playerId/ready", {
     schema: {
         params: {
@@ -836,6 +1048,7 @@ app.post("/api/lobbies/:code/players/:playerId/ready", {
     await publishLobby(request.params.code);
     return getLobbySnapshot(request.params.code);
 });
+/* ────────── REST: Start Game ────────── */
 app.post("/api/lobbies/:code/start", {
     schema: {
         params: {
@@ -863,9 +1076,9 @@ app.post("/api/lobbies/:code/start", {
         reply.code(403);
         return { message: "Hanya host yang bisa memulai game." };
     }
-    if (lobby.players.length < 4) {
+    if (lobby.players.length < 1) {
         reply.code(400);
-        return { message: "Minimal 4 pemain untuk memulai." };
+        return { message: "Minimal 1 pemain untuk memulai." };
     }
     const allNonHostReady = lobby.players
         .filter((player) => !player.isHost)
@@ -887,26 +1100,7 @@ app.post("/api/lobbies/:code/start", {
     }
     const categories = await getCategories();
     const category = categories[randomInt(0, categories.length)];
-    const challengeResult = await query(`
-        SELECT
-          id,
-          title,
-          description,
-          language,
-          difficulty,
-          round_number,
-          tests,
-          objectives,
-          imposter_objectives,
-          chat_messages,
-          imposter_feed,
-          editor_lines
-        FROM challenges
-        WHERE category_slug = $1
-        ORDER BY round_number ASC
-        LIMIT 1
-      `, [category.slug]);
-    const challenge = challengeResult.rows[0];
+    const challenge = await resolveChallengeForCategory(category.slug, 1);
     if (!challenge) {
         reply.code(500);
         return { message: "Challenge untuk kategori ini belum tersedia." };
@@ -914,23 +1108,30 @@ app.post("/api/lobbies/:code/start", {
     const sessionId = createId();
     const imposterIndex = randomInt(0, lobby.players.length);
     const initialEditorContent = editorLinesToContent(challenge.editor_lines);
+    // Determine max rounds based on available challenges for the category
+    const maxRoundsResult = await query(`
+        SELECT MAX(round_number)::text AS max_round
+        FROM challenges
+        WHERE category_slug = $1
+      `, [category.slug]);
+    const maxRounds = Math.min(4, Number(maxRoundsResult.rows[0]?.max_round ?? "4"));
     await inTransaction(async (client) => {
         await client.query(`UPDATE lobbies SET status = 'in_game' WHERE id = $1`, [lobby.id]);
         await client.query(`
           INSERT INTO sessions (
-            id,
-            lobby_id,
-            challenge_id,
-            category_slug,
-            phase,
-            round,
-            max_rounds,
-            sabotage_charges,
-            time_remaining_seconds,
-            editor_content
+            id, lobby_id, challenge_id, category_slug, phase,
+            round, max_rounds, sabotage_charges, time_remaining_seconds, editor_content
           )
-          VALUES ($1, $2, $3, $4, 'category', 1, 4, 5, 37, $5)
-        `, [sessionId, lobby.id, challenge.id, category.slug, initialEditorContent]);
+          VALUES ($1, $2, $3, $4, 'category', 1, $5, 5, $6, $7)
+        `, [
+            sessionId,
+            lobby.id,
+            challenge.id,
+            category.slug,
+            maxRounds,
+            CATEGORY_VOTE_DURATION_SECONDS,
+            initialEditorContent,
+        ]);
         for (const [index, player] of lobby.players.entries()) {
             const role = index === imposterIndex ? "imposter" : "civilian";
             const status = role === "imposter" ? "observing edge cases" : "reviewing helper signatures";
@@ -950,6 +1151,7 @@ app.post("/api/lobbies/:code/start", {
     await publishSession(sessionId);
     return { sessionId };
 });
+/* ────────── REST: Get Session ────────── */
 app.get("/api/sessions/:sessionId", {
     schema: {
         params: {
@@ -974,11 +1176,17 @@ app.get("/api/sessions/:sessionId", {
     }
     return snapshot;
 });
+/* ────────── Start ────────── */
 async function start() {
     try {
-        await initDatabase();
+        if (config.mockMode) {
+            app.log.info("MOCK_MODE enabled — skipping database initialization.");
+        }
+        else {
+            await initDatabase();
+        }
         sessionTickInterval = setInterval(() => {
-            void tickPlayingSessions();
+            void tickActiveSessions();
         }, 1000);
         await app.listen({
             host: config.host,
