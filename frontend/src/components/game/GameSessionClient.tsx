@@ -9,7 +9,7 @@ import { getCharacterAsset } from "@/lib/character-assets";
 
 const CodeEditor = dynamic(
   () => import("@/components/editor/CodeEditor").then((m) => m.CodeEditor),
-  { ssr: false, loading: () => <div className="min-h-[590px] bg-[#1f2033] animate-pulse" /> },
+  { ssr: false, loading: () => <div className="h-full bg-[#1f2033] animate-pulse" /> },
 );
 
 type GameSessionClientProps = {
@@ -56,11 +56,14 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
         if (!cancelled) {
           setSnapshot(nextSnapshot);
           if (pendingEditorContentRef.current === nextSnapshot.editorContent) {
+            // Server confirmed our edit — clear pending and sync state
             pendingEditorContentRef.current = null;
-          }
-          if (pendingEditorContentRef.current === null) {
+            setEditorContent(nextSnapshot.editorContent);
+          } else if (pendingEditorContentRef.current === null) {
+            // No pending local edit — apply server content
             setEditorContent(nextSnapshot.editorContent);
           }
+          // If pending !== null and pending !== server: keep local content, don't update
           setLoadError(null);
         }
       },
@@ -113,7 +116,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   }
 
   function handleEditorChange(nextValue: string) {
-    setEditorContent(nextValue);
+    // Don't call setEditorContent here — CodeMirror owns content while editing.
+    // Calling it would trigger the value effect and can cause cursor jumps.
     pendingEditorContentRef.current = nextValue;
 
     if (editorSyncTimerRef.current !== null) {
@@ -163,17 +167,30 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const isCivilian = snapshot.currentUser.role === "civilian";
   const roleLabel = isCivilian ? "CIVILIAN" : "IMPOSTER";
   const primaryActionLabel = isCivilian ? "△ EMERGENCY" : "⚠ SABOTAGE";
+  const primaryActionClass = isCivilian
+    ? "pixel-button pixel-button-primary"
+    : "pixel-button pixel-button-danger";
   const sideTitle = isCivilian ? "Test Cases" : "Sabotage Tasks";
   const sideCount = isCivilian ? `(${snapshot.objectives.filter(o => o.done).length}/${snapshot.objectives.length})` : `(${snapshot.sabotageCharges}/5)`;
   const sidebarItems = isCivilian ? snapshot.objectives : snapshot.imposterObjectives;
   const editorHeaderTone = isCivilian ? "pixel-chip-orange" : "pixel-chip-red";
   const rightPanelTitle = isCivilian ? "Chat" : "Covert Feed + Chat";
+
+  function parseTimestampToMinutes(ts: string): number {
+    const [h, m] = ts.split(".").map(Number);
+    return (h ?? 0) * 60 + (m ?? 0);
+  }
+
   const rightMessages = isCivilian
     ? snapshot.chatMessages
-    : [...snapshot.imposterFeed, ...snapshot.chatMessages];
+    : [...snapshot.imposterFeed, ...snapshot.chatMessages].sort(
+        (a, b) => parseTimestampToMinutes(a.timestamp) - parseTimestampToMinutes(b.timestamp),
+      );
   const actionDisabled = snapshot.phase !== "playing";
   const editorLang = snapshot.challenge.language || "javascript";
-  const displayTime = snapshot.timeRemaining.replace(/s$/, " detik");
+  const timeSeconds = parseInt(snapshot.timeRemaining.replace(/s$/, ""), 10);
+  const displayTime = `${timeSeconds}s`;
+  const timerIsLow = !isNaN(timeSeconds) && timeSeconds <= 5;
 
   function handlePrimaryAction() {
     if (isCivilian) {
@@ -212,9 +229,9 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
           </div>
 
           {/* Main 3-column layout */}
-          <section className="grid flex-1 grid-cols-1 gap-0 border-4 border-[color:var(--brown)] bg-[color:var(--cream)] xl:grid-cols-[260px_minmax(0,1fr)_280px]">
+          <section className="grid flex-1 grid-cols-1 gap-0 border-4 border-[color:var(--brown)] bg-[color:var(--cream)] xl:grid-cols-[260px_minmax(0,1fr)_280px] xl:grid-rows-[1fr]">
             {/* Left sidebar: players + objectives */}
-            <aside className="border-b-4 border-[color:var(--brown)] p-4 xl:border-r-4 xl:border-b-0">
+            <aside className="border-b-4 border-[color:var(--brown)] p-4 xl:border-r-4 xl:border-b-0 xl:overflow-y-auto">
               <h2 className="text-2xl">Players</h2>
               <div className="mt-4 space-y-2">
                 {snapshot.players.map((player) => (
@@ -262,7 +279,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             </aside>
 
             {/* Center: Code Editor */}
-            <div className="border-b-4 border-[color:var(--brown)] xl:border-r-4 xl:border-b-0 flex flex-col">
+            <div className="border-b-4 border-[color:var(--brown)] xl:border-r-4 xl:border-b-0 flex flex-col h-full">
               {/* Challenge header */}
               <div className="border-b-4 border-[color:var(--brown)] bg-[#1a1b2e] px-4 py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -273,7 +290,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
               </div>
 
               {/* CodeMirror Editor */}
-              <div className="flex-1 min-h-[520px] bg-[#1f2033]">
+              <div className="flex-1 bg-[#1f2033]" style={{ minHeight: 0 }}>
                 <CodeEditor
                   value={editorContent}
                   language={editorLang}
@@ -291,7 +308,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                   type="button"
                   onClick={handlePrimaryAction}
                   disabled={actionDisabled || (!isCivilian && snapshot.sabotageCharges <= 0)}
-                  className={`pixel-button pixel-button-danger shrink-0 ml-3 ${actionDisabled ? "opacity-60" : ""}`}
+                  className={`${primaryActionClass} shrink-0 ml-3 ${actionDisabled ? "opacity-60" : ""}`}
                 >
                   {primaryActionLabel}
                 </button>
@@ -299,7 +316,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             </div>
 
             {/* Right sidebar: Chat */}
-            <aside className="grid min-h-full grid-rows-[1fr_auto]">
+            <aside className="grid h-full grid-rows-[1fr_auto] overflow-hidden">
               <div className="flex flex-col">
                 <div className="border-b-4 border-[color:var(--brown)] px-2 py-3 text-center text-base xl:text-lg shrink-0 leading-tight">
                   {rightPanelTitle}
@@ -353,24 +370,26 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       {/* Category Vote Overlay */}
       {snapshot.phase === "category" ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black px-4 text-center">
-            <div className="w-full max-w-6xl">
-              <p className="pixel-title text-4xl sm:text-6xl">VOTE CATEGORY</p>
-              <p className="pixel-small mt-3 text-white/70">Round {snapshot.round} of {snapshot.maxRounds}</p>
-              <div className="pixel-panel mt-8 w-full p-5 sm:p-6">
-                <div className="mb-5 flex flex-col items-center justify-between gap-3 sm:flex-row">
-                  <div className="text-center sm:text-left">
-                    <p className="text-xl">Choose challenge type</p>
-                    <p className="pixel-small mt-1 text-[color:var(--text-muted)]">
-                      Pilih dalam 10 detik. Jika seri, challenge akan diacak.
-                    </p>
-                  </div>
-                  <div className="pixel-panel min-w-[120px] px-3 py-2 text-center text-xl">
-                    {displayTime}
-                  </div>
+          <div className="w-full max-w-7xl">
+            <p className="pixel-title text-4xl sm:text-6xl">VOTE CATEGORY</p>
+            <p className="pixel-small mt-3 text-white/70">Round {snapshot.round} of {snapshot.maxRounds}</p>
+            <div className="pixel-panel mt-6 w-full p-4 sm:p-5">
+              {/* Header row */}
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <div className="text-left">
+                  <p className="text-xl">Choose challenge type</p>
+                  <p className="pixel-small mt-1 text-[color:var(--text-muted)]">
+                    Pilih dalam 10 detik. Jika seri, challenge akan diacak.
+                  </p>
                 </div>
-                <div className="grid gap-3 lg:grid-cols-4">
-                  {snapshot.categoryVoteOptions.map((category) => (
-                    <button
+                <div className={`pixel-panel min-w-[90px] px-3 py-2 text-center text-2xl shrink-0 ${timerIsLow ? "animate-pulse text-[color:var(--red)]" : ""}`}>
+                  {displayTime}
+                </div>
+              </div>
+              {/* 4-column landscape grid */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {snapshot.categoryVoteOptions.map((category) => (
+                  <button
                     key={category.slug}
                     type="button"
                     onClick={() =>
@@ -379,21 +398,21 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                         categorySlug: category.slug,
                       })
                     }
-                      className={`pixel-panel flex min-h-[156px] flex-col px-4 py-3 text-left ${
-                        snapshot.currentCategoryVote === category.slug ? "bg-[#9bc8dd]" : "bg-[#fff8ea]"
-                      }`}
+                    className={`pixel-panel flex flex-col px-4 py-3 text-left transition-colors ${
+                      snapshot.currentCategoryVote === category.slug ? "bg-[#9bc8dd]" : "bg-[#fff8ea] hover:bg-[#e8f4f8]"
+                    }`}
                   >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="pixel-small pr-3 font-bold">{category.name}</span>
-                      <span className="pixel-chip pixel-chip-green">{category.votes}</span>
+                    <div className="flex items-center justify-between w-full gap-2">
+                      <span className="pixel-small font-bold leading-tight">{category.name}</span>
+                      <span className="pixel-chip pixel-chip-green shrink-0">{category.votes}</span>
                     </div>
-                    <span className="pixel-small mt-1 text-[color:var(--text-muted)] text-[10px]">
+                    <span className="pixel-small mt-2 text-[color:var(--text-muted)] text-[10px] leading-relaxed">
                       {category.description}
                     </span>
                   </button>
                 ))}
               </div>
-              <p className="pixel-small mt-5 text-[color:var(--text-muted)]">
+              <p className="pixel-small mt-4 text-[color:var(--text-muted)]">
                 Jika tidak semua pemain vote sampai timer habis, kategori dengan vote terbanyak yang dipilih.
               </p>
             </div>

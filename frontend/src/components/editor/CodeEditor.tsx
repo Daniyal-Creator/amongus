@@ -186,6 +186,7 @@ export function CodeEditor({ value, language, disabled, onChange }: CodeEditorPr
     <div
       ref={containerRef}
       className="code-editor-container"
+      style={{ height: "100%" }}
     />
   );
 }
