@@ -15,12 +15,16 @@ import {
   indentOnInput,
 } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { createCursorExtension, updateCursors } from "@/components/game/panels/CursorOverlay";
+import type { CursorPresence } from "@/types";
 
 type CodeEditorProps = {
   value: string;
   language: string;
   disabled?: boolean;
   onChange?: (value: string) => void;
+  onCursorActivity?: (anchor: number, head: number) => void;
+  remoteCursors?: CursorPresence[];
 };
 
 function getLanguageExtension(language: string) {
@@ -38,16 +42,21 @@ function getLanguageExtension(language: string) {
   }
 }
 
-export function CodeEditor({ value, language, disabled, onChange }: CodeEditorProps) {
+export function CodeEditor({ value, language, disabled, onChange, onCursorActivity, remoteCursors }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
+  const onCursorActivityRef = useRef(onCursorActivity);
   const isExternalUpdate = useRef(false);
   const valueRef = useRef(value);
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    onCursorActivityRef.current = onCursorActivity;
+  }, [onCursorActivity]);
 
   useEffect(() => {
     valueRef.current = value;
@@ -68,6 +77,10 @@ export function CodeEditor({ value, language, disabled, onChange }: CodeEditorPr
       if (update.docChanged && !isExternalUpdate.current) {
         const newValue = update.state.doc.toString();
         onChangeRef.current?.(newValue);
+      }
+      if (update.selectionSet && !isExternalUpdate.current) {
+        const { anchor, head } = update.state.selection.main;
+        onCursorActivityRef.current?.(anchor, head);
       }
     });
 
@@ -129,6 +142,7 @@ export function CodeEditor({ value, language, disabled, onChange }: CodeEditorPr
         customTheme,
         editable,
         updateListener,
+        createCursorExtension(),
         keymap.of([...defaultKeymap, ...historyKeymap, ...closeBracketsKeymap]),
         EditorView.lineWrapping,
       ],
@@ -181,6 +195,12 @@ export function CodeEditor({ value, language, disabled, onChange }: CodeEditorPr
     });
     isExternalUpdate.current = false;
   }, [value]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !remoteCursors) return;
+    updateCursors(view, remoteCursors);
+  }, [remoteCursors]);
 
   return (
     <div

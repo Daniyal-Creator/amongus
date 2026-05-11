@@ -55,7 +55,7 @@ type SessionSubscriptionOptions = SubscriptionOptions<GameSnapshot> & {
   onCursors?: (cursors: CursorPresence[]) => void;
 };
 
-type SessionConnection = {
+export type SessionConnection = {
   close: () => void;
   send: (payload: SessionRealtimeMessage) => void;
 };

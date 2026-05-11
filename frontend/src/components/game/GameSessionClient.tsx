@@ -4,8 +4,13 @@ import dynamic from "next/dynamic";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { connectSession, getSession, type SessionRealtimeMessage } from "@/lib/api";
 import { getSessionPlayerId } from "@/lib/player-session";
-import type { GameSnapshot } from "@/types";
+import type { CursorPresence, GameSnapshot } from "@/types";
 import { getCharacterAsset } from "@/lib/character-assets";
+import { useCursorPresence } from "@/hooks/use-cursor-presence";
+import { SandboxPanel } from "@/components/game/panels/SandboxPanel";
+import { SecurityPanel } from "@/components/game/panels/SecurityPanel";
+import { AiAssistPanel } from "@/components/game/panels/AiAssistPanel";
+import { GameReviewPanel } from "@/components/game/panels/GameReviewPanel";
 
 const CodeEditor = dynamic(
   () => import("@/components/editor/CodeEditor").then((m) => m.CodeEditor),
@@ -21,6 +26,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState("");
   const [chatDraft, setChatDraft] = useState("");
+  const [cursors, setCursors] = useState<CursorPresence[]>([]);
   const sessionConnectionRef = useRef<ReturnType<typeof connectSession> | null>(null);
   const editorSyncTimerRef = useRef<number | null>(null);
   const pendingEditorContentRef = useRef<string | null>(null);
@@ -28,13 +34,21 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const [roleRevealStage, setRoleRevealStage] = useState<"hidden" | "assigning" | "revealed">("hidden");
   const hasShownRoleRef = useRef(false);
 
+  const playerId = typeof window !== "undefined" ? getSessionPlayerId(sessionId) : null;
+
+  const { remoteCursors, sendCursorPosition } = useCursorPresence(
+    sessionConnectionRef.current,
+    cursors,
+    playerId ?? "",
+  );
+
   useEffect(() => {
-    const playerId = getSessionPlayerId(sessionId);
+    const pid = getSessionPlayerId(sessionId);
     let cancelled = false;
 
     async function loadSession() {
       try {
-        const nextSnapshot = await getSession(sessionId, playerId ?? undefined);
+        const nextSnapshot = await getSession(sessionId, pid ?? undefined);
         if (!cancelled) {
           setSnapshot(nextSnapshot);
           setEditorContent(nextSnapshot.editorContent);
@@ -51,20 +65,22 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
     }
 
     void loadSession();
-    sessionConnectionRef.current = connectSession(sessionId, playerId ?? undefined, {
+    sessionConnectionRef.current = connectSession(sessionId, pid ?? undefined, {
       onSnapshot: (nextSnapshot) => {
         if (!cancelled) {
           setSnapshot(nextSnapshot);
           if (pendingEditorContentRef.current === nextSnapshot.editorContent) {
-            // Server confirmed our edit — clear pending and sync state
             pendingEditorContentRef.current = null;
             setEditorContent(nextSnapshot.editorContent);
           } else if (pendingEditorContentRef.current === null) {
-            // No pending local edit — apply server content
             setEditorContent(nextSnapshot.editorContent);
           }
-          // If pending !== null and pending !== server: keep local content, don't update
           setLoadError(null);
+        }
+      },
+      onCursors: (nextCursors) => {
+        if (!cancelled) {
+          setCursors(nextCursors);
         }
       },
       onError: () => {
@@ -116,8 +132,6 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   }
 
   function handleEditorChange(nextValue: string) {
-    // Don't call setEditorContent here — CodeMirror owns content while editing.
-    // Calling it would trigger the value effect and can cause cursor jumps.
     pendingEditorContentRef.current = nextValue;
 
     if (editorSyncTimerRef.current !== null) {
@@ -166,10 +180,6 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
   const isCivilian = snapshot.currentUser.role === "civilian";
   const roleLabel = isCivilian ? "CIVILIAN" : "IMPOSTER";
-  const primaryActionLabel = isCivilian ? "△ EMERGENCY" : "⚠ SABOTAGE";
-  const primaryActionClass = isCivilian
-    ? "pixel-button pixel-button-primary"
-    : "pixel-button pixel-button-danger";
   const sideTitle = isCivilian ? "Test Cases" : "Sabotage Tasks";
   const sideCount = isCivilian ? `(${snapshot.objectives.filter(o => o.done).length}/${snapshot.objectives.length})` : `(${snapshot.sabotageCharges}/5)`;
   const sidebarItems = isCivilian ? snapshot.objectives : snapshot.imposterObjectives;
@@ -186,7 +196,6 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
     : [...snapshot.imposterFeed, ...snapshot.chatMessages].sort(
         (a, b) => parseTimestampToMinutes(a.timestamp) - parseTimestampToMinutes(b.timestamp),
       );
-  const actionDisabled = snapshot.phase !== "playing";
   const editorLang = snapshot.challenge.language || "javascript";
   const timeSeconds = parseInt(snapshot.timeRemaining.replace(/s$/, ""), 10);
   const displayTime = `${timeSeconds}s`;
@@ -230,15 +239,15 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
           {/* Main 3-column layout */}
           <section className="grid flex-1 grid-cols-1 gap-0 border-4 border-[color:var(--brown)] bg-[color:var(--cream)] xl:grid-cols-[260px_minmax(0,1fr)_280px] xl:grid-rows-[1fr]">
-            {/* Left sidebar: players + objectives */}
+            {/* Left sidebar: players + objectives + feature panels */}
             <aside className="border-b-4 border-[color:var(--brown)] p-4 xl:border-r-4 xl:border-b-0 xl:overflow-y-auto">
               <h2 className="text-2xl">Players</h2>
               <div className="mt-4 space-y-2">
                 {snapshot.players.map((player) => (
                   <div key={player.id} className="flex items-center gap-3">
                     <div className="w-[36px] h-[36px] flex items-center justify-center border-[2px] border-[#5c4427] bg-[#8a6b45] shadow-[inset_0_0_4px_rgba(0,0,0,0.3)] shrink-0 relative">
-                      <img 
-                        src={getCharacterAsset(player.id)} 
+                      <img
+                        src={getCharacterAsset(player.id)}
                         alt={player.name}
                         style={{ imageRendering: "pixelated" }}
                         className="w-[24px] h-[24px] object-contain drop-shadow-md"
@@ -276,9 +285,24 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                     : `${snapshot.sabotageCharges} charges left. Use wisely.`}
                 </p>
               </div>
+
+              {/* Security Scanner (civilians) or AI Assist (imposters) */}
+              <SecurityPanel
+                sessionId={sessionId}
+                playerId={playerId ?? ""}
+                phase={snapshot.phase}
+                isCivilian={isCivilian}
+              />
+              {!isCivilian ? (
+                <AiAssistPanel
+                  sessionId={sessionId}
+                  playerId={playerId ?? ""}
+                  phase={snapshot.phase}
+                />
+              ) : null}
             </aside>
 
-            {/* Center: Code Editor */}
+            {/* Center: Code Editor + Sandbox */}
             <div className="border-b-4 border-[color:var(--brown)] xl:border-r-4 xl:border-b-0 flex flex-col h-full">
               {/* Challenge header */}
               <div className="border-b-4 border-[color:var(--brown)] bg-[#1a1b2e] px-4 py-2 flex items-center justify-between">
@@ -296,23 +320,21 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                   language={editorLang}
                   disabled={snapshot.phase !== "playing"}
                   onChange={handleEditorChange}
+                  onCursorActivity={sendCursorPosition}
+                  remoteCursors={remoteCursors}
                 />
               </div>
 
-              {/* Action bar */}
-              <div className="flex items-center justify-between border-t-4 border-[color:var(--brown)] bg-[#f7edd8] p-3">
-                <div className="pixel-small text-[#5c4427]">
-                  {snapshot.challenge.description}
-                </div>
-                <button
-                  type="button"
-                  onClick={handlePrimaryAction}
-                  disabled={actionDisabled || (!isCivilian && snapshot.sabotageCharges <= 0)}
-                  className={`${primaryActionClass} shrink-0 ml-3 ${actionDisabled ? "opacity-60" : ""}`}
-                >
-                  {primaryActionLabel}
-                </button>
-              </div>
+              {/* Sandbox action bar + results */}
+              <SandboxPanel
+                sessionId={sessionId}
+                playerId={playerId ?? ""}
+                phase={snapshot.phase}
+                description={snapshot.challenge.description}
+                isCivilian={isCivilian}
+                sabotageCharges={snapshot.sabotageCharges}
+                onPrimaryAction={handlePrimaryAction}
+              />
             </div>
 
             {/* Right sidebar: Chat */}
@@ -432,7 +454,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             {/* Code snippet review */}
             {snapshot.meeting.snippet ? (
               <div className="pixel-panel mt-6 p-4 text-left">
-                <p className="pixel-small mb-3 text-[color:var(--text-muted)]">📋 Captured code snapshot at meeting time</p>
+                <p className="pixel-small mb-3 text-[color:var(--text-muted)]">Captured code snapshot at meeting time</p>
                 <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-sm text-[#39404f] bg-[#fff8ea] p-3 border-2 border-[color:var(--brown-dark)] max-h-[200px] overflow-y-auto">
                   {snapshot.meeting.snippet}
                 </pre>
@@ -480,7 +502,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
             {/* Chat during meeting */}
             <div className="pixel-panel mt-4 p-4 text-left">
-              <p className="pixel-small mb-2 text-white/80">💬 Discussion</p>
+              <p className="pixel-small mb-2 text-white/80">Discussion</p>
               <div className="max-h-[150px] overflow-y-auto space-y-2 mb-3">
                 {snapshot.chatMessages.slice(-10).map((msg, idx) => (
                   <div key={`meeting-chat-${idx}`} className="pixel-small">
@@ -507,7 +529,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
       {/* Game Over Overlay */}
       {snapshot.phase === "game_over" ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-10 text-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-10 text-center overflow-y-auto">
           <div className="w-full max-w-3xl">
             <p className="pixel-title text-4xl sm:text-6xl">GAME OVER</p>
             <div className="pixel-panel mt-6 p-6">
@@ -531,6 +553,10 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                   </div>
                 ))}
               </div>
+
+              {/* AI Post-Game Review */}
+              <GameReviewPanel sessionId={sessionId} phase={snapshot.phase} />
+
               <button
                 type="button"
                 onClick={() => window.location.href = "/"}
@@ -546,7 +572,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       {/* Role Reveal Overlay */}
       {roleRevealStage !== "hidden" ? (
         <div className={`fixed inset-0 z-[100] flex flex-col items-center justify-center transition-colors duration-1000 ${
-          roleRevealStage === "assigning" 
+          roleRevealStage === "assigning"
             ? "bg-black"
             : isCivilian
               ? "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1d4018] via-[#0c1f09] to-black"
