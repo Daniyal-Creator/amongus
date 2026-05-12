@@ -13,10 +13,12 @@ import type {
 } from "@/types";
 import {
   createMockLobby,
+  executeMockSandbox,
   getMockLeaderboard,
   getMockLobby,
   getMockSession,
   joinMockLobby,
+  runMockSecurityScan,
   sendMockSessionMessage,
   startMockLobby,
   subscribeMockLobby,
@@ -184,6 +186,10 @@ export function getGameReview(sessionId: string) {
 }
 
 export function runSecurityScan(sessionId: string, playerId: string) {
+  if (MOCK_MODE) {
+    return runMockSecurityScan(sessionId, playerId);
+  }
+
   return request<SecurityScanReport>(`/sessions/${sessionId}/security-scan`, {
     method: "POST",
     body: JSON.stringify({ playerId }),
@@ -191,6 +197,10 @@ export function runSecurityScan(sessionId: string, playerId: string) {
 }
 
 export function executeSandbox(sessionId: string, playerId: string, stdin?: string) {
+  if (MOCK_MODE) {
+    return executeMockSandbox(sessionId, playerId);
+  }
+
   return request<SandboxRunResponse>(`/sessions/${sessionId}/execute`, {
     method: "POST",
     body: JSON.stringify({ playerId, stdin }),

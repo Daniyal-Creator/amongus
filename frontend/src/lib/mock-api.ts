@@ -7,6 +7,8 @@ import type {
   LobbyPlayer,
   LobbySnapshot,
   Player,
+  SandboxRunResponse,
+  SecurityScanReport,
 } from "@/types";
 
 const STORE_KEY = "code-mafia:mock-store:v1";
@@ -990,4 +992,36 @@ export async function sendMockSessionMessage(
 
     notifySession(sessionId);
   });
+}
+
+export async function executeMockSandbox(
+  _sessionId: string,
+  _playerId: string,
+): Promise<SandboxRunResponse> {
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  return {
+    passed: 1,
+    total: 1,
+    results: [
+      {
+        passed: true,
+        input: "[demo]",
+        expected: "[demo output]",
+        actual: "[demo output]",
+      },
+    ],
+  };
+}
+
+export async function runMockSecurityScan(
+  _sessionId: string,
+  _playerId: string,
+): Promise<SecurityScanReport> {
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  return {
+    passed: true,
+    badge: "verified",
+    issues: [],
+    scannedLines: 10,
+  };
 }
