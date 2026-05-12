@@ -7,24 +7,24 @@ type AiAssistPanelProps = {
   sessionId: string;
   playerId: string;
   phase: GameSnapshot["phase"];
+  onGhostHint?: () => void;
 };
 
-export function AiAssistPanel({ sessionId, playerId, phase }: AiAssistPanelProps) {
+export function AiAssistPanel({ sessionId, playerId, phase, onGhostHint }: AiAssistPanelProps) {
   if (phase !== "playing") return null;
 
-  return <AiAssistPanelInner sessionId={sessionId} playerId={playerId} />;
+  return <AiAssistPanelInner sessionId={sessionId} playerId={playerId} onGhostHint={onGhostHint} />;
 }
 
-function AiAssistPanelInner({ sessionId, playerId }: { sessionId: string; playerId: string }) {
+function AiAssistPanelInner({ sessionId, playerId, onGhostHint }: { sessionId: string; playerId: string; onGhostHint?: () => void }) {
   const {
-    suggestion,
     poisonResult,
     loading,
     error,
     remaining,
     requestSuggestion,
     activatePoison,
-  } = useAiAssist(sessionId, playerId);
+  } = useAiAssist(sessionId, playerId, { onGhostHint });
 
   const isRateLimited = remaining !== null && remaining <= 0;
 
@@ -68,13 +68,6 @@ function AiAssistPanelInner({ sessionId, playerId }: { sessionId: string; player
       {error ? (
         <div className="pixel-panel-result mt-3 px-3 py-2 border-l-4 border-l-[var(--status-error-border)]">
           <p className="pixel-small text-[#9f2c27]">{error}</p>
-        </div>
-      ) : null}
-
-      {suggestion ? (
-        <div className="pixel-panel-result mt-3 px-3 py-2">
-          <p className="pixel-small text-[#5c4427] font-semibold mb-1">Ghost says:</p>
-          <p className="pixel-small text-[#5c4427]">{suggestion.suggestion}</p>
         </div>
       ) : null}
 

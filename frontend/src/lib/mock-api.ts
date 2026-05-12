@@ -994,6 +994,38 @@ export async function sendMockSessionMessage(
   });
 }
 
+const MOCK_GHOST_HINTS = [
+  "Ganti operator -= 2 menjadi -= 1 di decrement",
+  "Ubah return len(self.history) menjadi return self.count",
+  "Hapus pass di reset, tambahkan self.count = 1",
+  "Ganti += menjadi -= di fungsi increment",
+  "Tukar kondisi > menjadi >= pada filter",
+];
+
+let mockGhostHintIndex = 0;
+let mockAiRemaining = 5;
+
+export async function requestMockSabotageSuggestion(
+  sessionId: string,
+  _playerId: string,
+): Promise<{ suggestion: string; model: string; remaining: number }> {
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+
+  const hint = MOCK_GHOST_HINTS[mockGhostHintIndex % MOCK_GHOST_HINTS.length];
+  mockGhostHintIndex += 1;
+  mockAiRemaining = Math.max(0, mockAiRemaining - 1);
+
+  withStore((store) => {
+    const session = store.sessions[sessionId];
+    if (session) {
+      appendChat(session.imposterFeed, "ghost.ai", "#ff688b", hint);
+      notifySession(sessionId);
+    }
+  });
+
+  return { suggestion: hint, model: "mock", remaining: mockAiRemaining };
+}
+
 export async function executeMockSandbox(
   _sessionId: string,
   _playerId: string,

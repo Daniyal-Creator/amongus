@@ -2,10 +2,13 @@
 
 import { useCallback, useState } from "react";
 import { requestSabotageSuggestion, activateCopilotPoisoning } from "@/lib/api";
-import type { AiSabotageSuggestResponse, AiPoisoningResponse } from "@/types";
+import type { AiPoisoningResponse } from "@/types";
 
-export function useAiAssist(sessionId: string, playerId: string) {
-  const [suggestion, setSuggestion] = useState<AiSabotageSuggestResponse | null>(null);
+type UseAiAssistOptions = {
+  onGhostHint?: () => void;
+};
+
+export function useAiAssist(sessionId: string, playerId: string, options?: UseAiAssistOptions) {
   const [poisonResult, setPoisonResult] = useState<AiPoisoningResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,14 +19,14 @@ export function useAiAssist(sessionId: string, playerId: string) {
     setError(null);
     try {
       const response = await requestSabotageSuggestion(sessionId, playerId);
-      setSuggestion(response);
       setRemaining(response.remaining);
+      options?.onGhostHint?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI service tidak tersedia.");
     } finally {
       setLoading(false);
     }
-  }, [sessionId, playerId]);
+  }, [sessionId, playerId, options]);
 
   const activatePoison = useCallback(async () => {
     setLoading(true);
@@ -39,5 +42,5 @@ export function useAiAssist(sessionId: string, playerId: string) {
     }
   }, [sessionId, playerId]);
 
-  return { suggestion, poisonResult, loading, error, remaining, requestSuggestion, activatePoison };
+  return { poisonResult, loading, error, remaining, requestSuggestion, activatePoison };
 }

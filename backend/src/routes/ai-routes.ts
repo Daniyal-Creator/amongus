@@ -81,15 +81,21 @@ export function registerAiRoutes(app: FastifyInstance) {
 
       const result = await ollamaGenerate(
         buildSabotageSuggestPrompt(ctx.challenge_title, ctx.language, ctx.editor_content),
-        { system: SABOTAGE_SUGGEST_SYSTEM, temperature: 0.8, maxTokens: 200, timeoutMs: 20_000 },
+        { system: SABOTAGE_SUGGEST_SYSTEM, temperature: 0.8, maxTokens: 60, timeoutMs: 20_000 },
       );
       if (!result.ok) {
-        return reply.code(502).send({
-          message: "AI service unavailable.",
-          detail: result.error.message,
-          fallback:
-            "Try swapping a `<` for `<=` in the main loop — it's a classic off-by-one only careful reviewers will spot.",
-        });
+        // Use a short fallback hint when AI is unavailable
+        const fallbackHint = "Ganti operator < menjadi <= di loop utama";
+        await query(
+          `INSERT INTO session_imposter_messages (id, session_id, user_name, color, message)
+           VALUES ($1, $2, 'ghost.ai', '#ff688b', $3)`,
+          [createId(), sessionId, fallbackHint],
+        );
+        return {
+          suggestion: fallbackHint,
+          model: "fallback",
+          remaining: rl.remaining,
+        };
       }
 
       // Whisper the suggestion into the imposter feed for replay/audit.

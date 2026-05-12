@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { Megaphone, Shield, Sword, Send } from "lucide-react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { connectSession, getSession, type SessionRealtimeMessage } from "@/lib/api";
 import { getSessionPlayerId } from "@/lib/player-session";
 import type { CursorPresence, GameSnapshot } from "@/types";
@@ -36,6 +36,19 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [roleRevealStage, setRoleRevealStage] = useState<"hidden" | "assigning" | "revealed">("hidden");
   const hasShownRoleRef = useRef(false);
+  const [ghostToast, setGhostToast] = useState(false);
+  const ghostToastTimerRef = useRef<number | null>(null);
+
+  const handleGhostHint = useCallback(() => {
+    setGhostToast(true);
+    if (ghostToastTimerRef.current !== null) {
+      window.clearTimeout(ghostToastTimerRef.current);
+    }
+    ghostToastTimerRef.current = window.setTimeout(() => {
+      setGhostToast(false);
+      ghostToastTimerRef.current = null;
+    }, 4000);
+  }, []);
 
   const playerId = typeof window !== "undefined" ? getSessionPlayerId(sessionId) : null;
 
@@ -95,6 +108,9 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       cancelled = true;
       if (editorSyncTimerRef.current !== null) {
         window.clearTimeout(editorSyncTimerRef.current);
+      }
+      if (ghostToastTimerRef.current !== null) {
+        window.clearTimeout(ghostToastTimerRef.current);
       }
       sessionConnectionRef.current?.close();
       sessionConnectionRef.current = null;
@@ -304,6 +320,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                   sessionId={sessionId}
                   playerId={playerId ?? ""}
                   phase={snapshot.phase}
+                  onGhostHint={handleGhostHint}
                 />
               ) : null}
             </aside>
@@ -656,6 +673,24 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
           </div>
         </motion.div>
       ) : null}
+      </AnimatePresence>
+
+      {/* Ghost Hint Toast */}
+      <AnimatePresence>
+        {ghostToast ? (
+          <motion.div
+            initial={{ opacity: 0, y: 50, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: 50, x: "-50%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className="fixed bottom-6 left-1/2 z-[90] px-5 py-3 bg-[#1a1a2e]/95 backdrop-blur-md border border-[#ff688b]/50 rounded-xl shadow-[0_0_20px_rgba(255,104,139,0.3)] flex items-center gap-3"
+          >
+            <span className="text-[#ff688b] text-lg">&#128123;</span>
+            <p className="pixel-small text-white/90">
+              Ghost hint sudah muncul di <span className="text-[#ff688b] font-bold">Chat Panel</span> →
+            </p>
+          </motion.div>
+        ) : null}
       </AnimatePresence>
 
       {/* Role Reveal Overlay */}

@@ -4,12 +4,14 @@
  */
 
 export const SABOTAGE_SUGGEST_SYSTEM = [
-  "You are GhostAI, an in-game whisper to an impostor in a coding party game.",
-  "You suggest exactly ONE subtle bug to inject — something a code reviewer might miss.",
-  "Keep the reply under 80 words. Reply in this format:",
-  "Idea: <one sentence>",
-  "Why subtle: <one sentence>",
-  "Where: <function or line hint>",
+  "You are GhostAI, a secret whisper to an impostor in a coding party game.",
+  "Reply with ONLY a single short hint (max 15 words) telling the impostor what subtle bug to inject.",
+  "Examples of good replies:",
+  "- Ganti operator + menjadi - di fungsi increment",
+  "- Ubah kondisi < menjadi <= pada loop utama",
+  "- Hapus return statement di branch else",
+  "- Tukar parameter a dan b di fungsi swap",
+  "Do NOT add explanations, labels, or formatting. Just the hint.",
 ].join(" ");
 
 export function buildSabotageSuggestPrompt(challengeTitle: string, language: string, source: string) {

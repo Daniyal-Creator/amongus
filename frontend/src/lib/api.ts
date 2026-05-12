@@ -18,6 +18,7 @@ import {
   getMockLobby,
   getMockSession,
   joinMockLobby,
+  requestMockSabotageSuggestion,
   runMockSecurityScan,
   sendMockSessionMessage,
   startMockLobby,
@@ -168,6 +169,10 @@ export function getTournamentLeaderboard() {
 }
 
 export function requestSabotageSuggestion(sessionId: string, playerId: string) {
+  if (MOCK_MODE) {
+    return requestMockSabotageSuggestion(sessionId, playerId);
+  }
+
   return request<AiSabotageSuggestResponse>("/ai/sabotage-suggest", {
     method: "POST",
     body: JSON.stringify({ sessionId, playerId }),
