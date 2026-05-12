@@ -2,6 +2,7 @@
 
 import { useSandbox } from "@/hooks/use-sandbox";
 import type { GameSnapshot } from "@/types";
+import { Play, TriangleAlert, Bomb } from "lucide-react";
 
 type SandboxPanelProps = {
   sessionId: string;
@@ -25,9 +26,8 @@ export function SandboxPanel({
   const { results, loading, error, execute, reset } = useSandbox(sessionId, playerId);
 
   const actionDisabled = phase !== "playing";
-  const primaryActionLabel = isCivilian ? "△ EMERGENCY" : "⚠ SABOTAGE";
   const primaryActionClass = isCivilian
-    ? "pixel-button pixel-button-primary"
+    ? "pixel-button pixel-button-emergency"
     : "pixel-button pixel-button-danger";
 
   return (
@@ -43,15 +43,22 @@ export function SandboxPanel({
               actionDisabled || loading ? "opacity-60" : ""
             }`}
           >
-            {loading ? "Running..." : "▶ RUN CODE"}
+            {loading ? "Running..." : (
+              <span className="flex items-center gap-2">
+                <Play className="w-4 h-4 fill-current" /> RUN CODE
+              </span>
+            )}
           </button>
           <button
             type="button"
             onClick={onPrimaryAction}
             disabled={actionDisabled || (!isCivilian && sabotageCharges <= 0)}
-            className={`${primaryActionClass} shrink-0 ${actionDisabled ? "opacity-60" : ""}`}
+            className={`${primaryActionClass} shrink-0 ${actionDisabled ? "opacity-60" : ""} ${isCivilian && !actionDisabled ? "animate-emergency-pulse" : ""}`}
           >
-            {primaryActionLabel}
+            <span className="flex items-center gap-2">
+              {isCivilian ? <TriangleAlert className="w-4 h-4 fill-current" /> : <Bomb className="w-4 h-4" />}
+              {isCivilian ? "EMERGENCY" : "SABOTAGE"}
+            </span>
           </button>
         </div>
       </div>

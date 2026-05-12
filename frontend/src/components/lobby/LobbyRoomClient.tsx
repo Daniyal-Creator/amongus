@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { Crown, Sparkles } from "lucide-react";
 import {
   getLobby,
   joinLobby,
@@ -183,7 +185,13 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
   }
 
   return (
-    <main className="sky-stage flex min-h-screen items-center justify-center px-4 py-10">
+    <motion.main 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 1.05 }}
+      transition={{ duration: 0.4 }}
+      className="sky-stage flex min-h-screen items-center justify-center px-4 py-10"
+    >
       <div className="relative z-10 flex w-full max-w-xl flex-col items-center">
         {needsJoin ? (
           <div className="w-full max-w-md animate-in fade-in zoom-in duration-300">
@@ -258,7 +266,7 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                 </h2>
                 {hostPlayer ? (
                   <span className="pixel-small text-white/80 border-2 border-[color:var(--brown-dark)] bg-[color:var(--brown)] px-2 py-1">
-                    👑 <span className="text-[#a2e858]">{hostPlayer.name}</span>
+                    <span className="flex items-center gap-1"><Crown className="w-4 h-4 text-[#a2e858]" /> <span className="text-[#a2e858]">{hostPlayer.name}</span></span>
                   </span>
                 ) : null}
               </div>
@@ -323,7 +331,11 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
               <div className="mt-8 flex flex-col gap-4 border-t-4 border-[color:var(--brown-dark)] pt-6">
                 <p className="pixel-small text-center text-white/90">
                   {allNonHostReady
-                    ? "✨ All players ready. Host can start! ✨"
+                    ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Sparkles className="w-4 h-4" /> All players ready. Host can start! <Sparkles className="w-4 h-4" />
+                      </span>
+                    )
                     : "Waiting for all non-host players to be ready..."}
                 </p>
 
@@ -361,6 +373,6 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
           </div>
         )}
       </div>
-    </main>
+    </motion.main>
   );
 }

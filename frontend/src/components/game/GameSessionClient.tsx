@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
+import { Megaphone, Shield, Sword, Send } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { connectSession, getSession, type SessionRealtimeMessage } from "@/lib/api";
 import { getSessionPlayerId } from "@/lib/player-session";
@@ -384,8 +385,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                     value={chatDraft}
                     onChange={(event) => setChatDraft(event.target.value)}
                   />
-                  <button type="submit" className="pixel-button pixel-button-primary px-0">
-                    ➜
+                  <button type="submit" className="pixel-button pixel-button-primary px-0 flex items-center justify-center">
+                    <Send className="w-4 h-4" />
                   </button>
                 </form>
               </div>
@@ -420,9 +421,17 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                     Pilih dalam 10 detik. Jika seri, challenge akan diacak.
                   </p>
                 </div>
-                <div className={`bg-white/10 border border-white/20 rounded-xl min-w-[90px] px-4 py-2 text-center text-3xl font-bold tracking-widest text-white shadow-inner ${timerIsLow ? "animate-pulse text-[#ff8f8f]" : ""}`}>
+                <motion.div 
+                  animate={timerIsLow ? { scale: [1, 1.15, 1] } : {}}
+                  transition={timerIsLow ? { repeat: Infinity, duration: 0.8, ease: "easeInOut" } : {}}
+                  className={`rounded-xl min-w-[90px] px-4 py-2 text-center text-3xl font-bold tracking-widest shadow-inner ${
+                    timerIsLow 
+                      ? "bg-red-500/20 border border-red-500/50 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]" 
+                      : "bg-white/10 border border-white/20 text-white"
+                  }`}
+                >
                   {displayTime}
-                </div>
+                </motion.div>
               </div>
               {/* 4-column landscape grid */}
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -462,109 +471,165 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       </AnimatePresence>
 
       {/* Emergency Meeting Overlay */}
+      <AnimatePresence>
       {snapshot.phase === "meeting" ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-10 text-center overflow-y-auto">
-          <div className="w-full max-w-4xl">
-            <p className="pixel-title text-4xl sm:text-6xl">EMERGENCY MEETING</p>
-            <p className="pixel-small mt-4 text-[#d9ddde]">
-              Called by {snapshot.meeting.startedBy ?? "unknown"}
-            </p>
-
-            {/* Code snippet review */}
-            {snapshot.meeting.snippet ? (
-              <div className="pixel-panel mt-6 p-4 text-left">
-                <p className="pixel-small mb-3 text-[color:var(--text-muted)]">Captured code snapshot at meeting time</p>
-                <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-sm text-[#39404f] bg-[#fff8ea] p-3 border-2 border-[color:var(--brown-dark)] max-h-[200px] overflow-y-auto">
-                  {snapshot.meeting.snippet}
-                </pre>
-              </div>
-            ) : null}
-
-            {/* Vote panel */}
-            <div className="pixel-panel mt-6 p-5">
-              <p className="text-xl">Vote who to eject</p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {snapshot.players
-                  .filter((p) => !p.status?.includes("ejected"))
-                  .map((player) => (
-                    <button
-                      key={player.id}
-                      type="button"
-                      onClick={() =>
-                        sendRealtimeMessage({
-                          type: "meeting.vote",
-                          targetPlayerId: player.id,
-                        })
-                      }
-                      className={`pixel-panel flex items-center justify-between px-4 py-3 text-left ${
-                        snapshot.meeting.currentVoteTargetId === player.id ? "bg-[#ffd6a5]" : "bg-[#fff8ea]"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="h-3 w-3 border border-[color:var(--brown-dark)]"
-                          style={{ backgroundColor: player.color }}
-                        />
-                        <span className="pixel-small pr-3">
-                          {player.name}
-                          {player.id === snapshot.currentUser.id ? " (You)" : ""}
-                        </span>
-                      </div>
-                      <span className="pixel-chip">{player.meetingVotes ?? 0}</span>
-                    </button>
-                  ))}
-              </div>
-              <p className="pixel-small mt-5 text-[color:var(--text-muted)]">
-                Meeting closes automatically after all active players submit a vote.
-              </p>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 1.05 }}
+          transition={{ duration: 0.3 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[url('/background/nature_2/origbig.png')] bg-cover bg-center px-4 py-6 text-[#39404f] overflow-y-auto"
+        >
+          {/* Dark overlay for focus */}
+          <div className="absolute inset-0 bg-black/70 z-0" />
+          
+          <div className="w-full max-w-[1200px] mx-auto grid grid-cols-1 xl:grid-cols-[1fr_350px] gap-6 z-10">
+            {/* Left/Main: Vote Panel */}
+            <div className="flex flex-col bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[8px_8px_0_0_rgba(0,0,0,0.5)] p-6 relative overflow-hidden" style={{ imageRendering: "pixelated" }}>
+               <div className="text-center mb-8 bg-[#8b5a2b] border-[4px] border-[#5c3a21] py-4 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
+                 <h1 className="pixel-title text-4xl md:text-5xl text-[#ffcf40] drop-shadow-[2px_2px_0_#000]">EMERGENCY MEETING</h1>
+                 <p className="mt-2 text-white/90 pixel-small">Called by <span className="text-[#ffcf40]">{snapshot.meeting.startedBy ?? "unknown"}</span></p>
+               </div>
+               
+               {/* Players Grid (Medieval style) */}
+               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                 {snapshot.players
+                   .filter((p) => !p.status?.includes("ejected"))
+                   .map((player) => (
+                     <motion.button
+                       whileHover={{ scale: 1.02, y: -2 }}
+                       whileTap={{ scale: 0.98, y: 2 }}
+                       key={player.id}
+                       onClick={() =>
+                         sendRealtimeMessage({
+                           type: "meeting.vote",
+                           targetPlayerId: player.id,
+                         })
+                       }
+                       className={`relative flex items-center gap-3 p-3 border-[4px] shadow-[4px_4px_0_0_rgba(0,0,0,0.3)] transition-all ${
+                         snapshot.meeting.currentVoteTargetId === player.id 
+                           ? "border-[#4ade80] bg-[#fff8ea]"
+                           : "border-[#5c4427] bg-[#f4e4c1]"
+                       }`}
+                     >
+                       <div className="w-[48px] h-[48px] border-[2px] border-[#5c4427] bg-[#8a6b45] shadow-[inset_0_0_4px_rgba(0,0,0,0.3)] shrink-0 relative flex items-center justify-center">
+                          <Image src={getCharacterAsset(player.id)} alt={player.name} width={36} height={36} className="object-contain drop-shadow-md" unoptimized style={{ imageRendering: "pixelated" }} />
+                          <div className="absolute top-1 right-1 w-2.5 h-2.5 border-[1px] border-black/50 shadow-sm" style={{ backgroundColor: player.color }} />
+                       </div>
+                       <div className="flex flex-col items-start text-left flex-1">
+                         <span className="pixel-small font-bold text-[#39404f]">
+                           {player.name}
+                           {player.id === snapshot.currentUser.id && <span className="text-[#8b5a2b] ml-1">(You)</span>}
+                         </span>
+                         {/* Votes indicator */}
+                         <div className="flex items-center gap-1 mt-2">
+                           {Array.from({ length: player.meetingVotes ?? 0 }).map((_, i) => (
+                             <span key={i} className="w-2.5 h-2.5 bg-[#d9381e] border-[1px] border-[#39404f] shadow-sm" />
+                           ))}
+                         </div>
+                       </div>
+                       {/* Megaphone icon for caller */}
+                        {snapshot.meeting.startedBy === player.name && (
+                         <div className="absolute -top-3 -right-3 text-[#ffcf40] drop-shadow-[2px_2px_0_rgba(0,0,0,0.8)] animate-bounce">
+                           <Megaphone className="w-8 h-8 fill-current" />
+                         </div>
+                       )}
+                     </motion.button>
+                   ))}
+               </div>
+               <div className="mt-auto pt-6 text-center text-[#5c4427] pixel-small">
+                 Meeting closes automatically after all active players submit a vote.
+               </div>
             </div>
 
-            {/* Chat during meeting */}
-            <div className="pixel-panel mt-4 p-4 text-left">
-              <p className="pixel-small mb-2 text-white/80">Discussion</p>
-              <div className="max-h-[150px] overflow-y-auto space-y-2 mb-3">
-                {snapshot.chatMessages.slice(-10).map((msg, idx) => (
-                  <div key={`meeting-chat-${idx}`} className="pixel-small">
-                    <span className="font-semibold" style={{ color: msg.color }}>{msg.user}: </span>
-                    <span className="text-[color:var(--text-muted)]">{msg.message}</span>
-                  </div>
-                ))}
+            {/* Right side: Chat & Code Snippet */}
+            <div className="flex flex-col gap-6">
+              {snapshot.meeting.snippet && (
+                <div className="bg-[#f4e4c1] border-[4px] border-[#8b5a2b] shadow-[6px_6px_0_0_rgba(0,0,0,0.4)] p-4">
+                  <p className="pixel-small text-[#8b5a2b] mb-2 font-bold uppercase border-b-[2px] border-[#8b5a2b] pb-1">
+                    Captured Code
+                  </p>
+                  <pre className="font-mono text-xs text-[#39404f] bg-[#fff8ea] p-3 border-2 border-[#5c4427] max-h-[150px] overflow-y-auto shadow-inner">
+                    {snapshot.meeting.snippet}
+                  </pre>
+                </div>
+              )}
+              
+              <div className="flex-1 bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[6px_6px_0_0_rgba(0,0,0,0.4)] flex flex-col overflow-hidden min-h-[300px]">
+                <div className="p-3 border-b-[4px] border-[#8b5a2b] bg-[#8a6b45] flex items-center justify-between shadow-[inset_0_-2px_0_rgba(0,0,0,0.2)]">
+                  <p className="pixel-small text-white drop-shadow-md">DISCUSSION</p>
+                  <span className="px-2 py-1 bg-[#5c4427] text-[#fff8ea] border-[2px] border-[#3e2723] text-[10px] pixel-small">{snapshot.chatMessages.length} msgs</span>
+                </div>
+                <div className="flex-1 p-4 overflow-y-auto space-y-2 bg-[#f4e4c1] shadow-[inset_0_0_10px_rgba(0,0,0,0.1)]">
+                  {snapshot.chatMessages.slice(-20).map((msg, idx) => (
+                    <div key={`meeting-chat-${idx}`} className="pixel-small bg-[#fff8ea] px-3 py-2 border-[2px] border-[#e0c9a3] shadow-sm">
+                      <span className="font-bold drop-shadow-sm" style={{ color: msg.color }}>{msg.user}: </span>
+                      <span className="text-[#39404f]">{msg.message}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-3 border-t-[4px] border-[#8b5a2b] bg-[#e6c9a8]">
+                  <form onSubmit={handleChatSubmit} className="flex gap-2">
+                    <input
+                      className="flex-1 bg-[#fff8ea] border-[2px] border-[#5c4427] px-3 py-2 pixel-small text-[#39404f] placeholder-[#a69882] focus:outline-none focus:border-[#8b5a2b] shadow-inner"
+                      placeholder="Discuss..."
+                      value={chatDraft}
+                      onChange={(event) => setChatDraft(event.target.value)}
+                    />
+                    <motion.button 
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      type="submit" 
+                      className="pixel-button pixel-button-primary px-4 py-2"
+                    >
+                      SEND
+                    </motion.button>
+                  </form>
+                </div>
               </div>
-              <form onSubmit={handleChatSubmit} className="grid grid-cols-[1fr_42px] gap-2">
-                <input
-                  className="pixel-input min-h-[36px] text-sm"
-                  placeholder="Discuss during meeting..."
-                  value={chatDraft}
-                  onChange={(event) => setChatDraft(event.target.value)}
-                />
-                <button type="submit" className="pixel-button pixel-button-primary px-0 min-h-[36px]">
-                  ➜
-                </button>
-              </form>
             </div>
           </div>
-        </div>
+        </motion.div>
       ) : null}
+      </AnimatePresence>
 
       {/* Game Over Overlay */}
+      <AnimatePresence>
       {snapshot.phase === "game_over" ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-10 text-center overflow-y-auto">
+        <motion.div 
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-10 text-center overflow-y-auto"
+          style={{ imageRendering: "pixelated" }}
+        >
           <div className="w-full max-w-3xl">
-            <p className="pixel-title text-4xl sm:text-6xl">GAME OVER</p>
-            <div className="pixel-panel mt-6 p-6">
-              <p className="text-3xl">
-                {snapshot.result.winnerTeam === "civilian" ? "🛡️" : "🔪"}{" "}
-                {snapshot.result.winnerTeam?.toUpperCase() ?? "UNKNOWN"} WINS
+            <motion.p 
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", bounce: 0.5 }}
+              className="pixel-title text-4xl sm:text-6xl text-[#ffcf40] drop-shadow-[4px_4px_0_#2b4a1b]"
+            >
+              GAME OVER
+            </motion.p>
+            <div className="bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[8px_8px_0_0_rgba(0,0,0,0.5)] mt-6 p-8 relative overflow-hidden">
+              <p className="pixel-title text-3xl drop-shadow-md flex items-center justify-center gap-3">
+                {snapshot.result.winnerTeam === "civilian" ? <Shield className="w-8 h-8 fill-[#2b4a1b] text-[#2b4a1b]" /> : <Sword className="w-8 h-8 fill-[#7a0f0f] text-[#7a0f0f]" />}{" "}
+                <span className={snapshot.result.winnerTeam === "civilian" ? "text-[#2b4a1b]" : "text-[#7a0f0f]"}>
+                  {snapshot.result.winnerTeam?.toUpperCase() ?? "UNKNOWN"} WINS
+                </span>
               </p>
-              <p className="pixel-small mt-4 text-[color:var(--text-muted)]">
+              <p className="pixel-small mt-4 text-[#5c4427] font-bold">
                 {snapshot.result.reason ?? "Session ended."}
               </p>
-              <div className="mt-6 grid gap-2 sm:grid-cols-2">
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 {snapshot.players.map((player) => (
-                  <div key={player.id} className="pixel-panel bg-[#fff8ea] px-3 py-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="h-3 w-3" style={{ backgroundColor: player.color }} />
-                      <span className="pixel-small">{player.name}</span>
+                  <div key={player.id} className="bg-[#f4e4c1] border-[4px] border-[#8b5a2b] shadow-[4px_4px_0_0_rgba(0,0,0,0.3)] px-4 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-[32px] h-[32px] bg-[#8a6b45] border-[2px] border-[#5c4427] shadow-[inset_0_0_4px_rgba(0,0,0,0.3)] flex justify-center items-center relative shrink-0">
+                        <Image src={getCharacterAsset(player.id)} alt={player.name} width={24} height={24} className="object-contain drop-shadow-md" unoptimized style={{ imageRendering: "pixelated" }} />
+                        <div className="absolute top-0 right-0 w-2 h-2 border-[1px] border-black/50 shadow-sm" style={{ backgroundColor: player.color }} />
+                      </div>
+                      <span className="pixel-small font-bold text-[#39404f]">{player.name}</span>
                     </div>
                     <span className={`pixel-chip text-[10px] ${player.role === "imposter" ? "pixel-chip-red" : "pixel-chip-green"}`}>
                       {player.role.toUpperCase()}
@@ -574,19 +639,24 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
               </div>
 
               {/* AI Post-Game Review */}
-              <GameReviewPanel sessionId={sessionId} phase={snapshot.phase} />
+              <div className="mt-8">
+                <GameReviewPanel sessionId={sessionId} phase={snapshot.phase} />
+              </div>
 
-              <button
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 type="button"
                 onClick={() => window.location.href = "/"}
-                className="pixel-button pixel-button-primary mt-6 text-lg px-8"
+                className="pixel-button pixel-button-primary mt-8 text-xl px-10 py-4 shadow-[0_6px_0_0_#9a6a00]"
               >
                 BACK TO HOME
-              </button>
+              </motion.button>
             </div>
           </div>
-        </div>
+        </motion.div>
       ) : null}
+      </AnimatePresence>
 
       {/* Role Reveal Overlay */}
       {roleRevealStage !== "hidden" ? (

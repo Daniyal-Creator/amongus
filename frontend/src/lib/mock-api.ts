@@ -625,7 +625,7 @@ function resolveMeeting(session: MockSessionRecord, currentPlayerId: string) {
       session.chatMessages,
       "system",
       "#f0a92e",
-      `🗳️ ${ejectedPlayer.name} received the most votes and was ejected.`,
+      `${ejectedPlayer.name} received the most votes and was ejected.`
     );
   }
 
@@ -955,7 +955,7 @@ export async function sendMockSessionMessage(
         session.chatMessages,
         "system",
         "#f0a92e",
-        `⚠️ ${currentPlayer.name} called an emergency meeting!`,
+        `${currentPlayer.name} called an emergency meeting!`,
       );
     }
 
@@ -978,7 +978,7 @@ export async function sendMockSessionMessage(
         session.chatMessages,
         "system",
         "#f0a92e",
-        "⚡ A sabotage wave just hit the code. Something changed...",
+        "A sabotage wave just hit the code. Something changed...",
       );
 
       if (session.sabotageCharges === 0) {

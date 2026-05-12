@@ -21,7 +21,13 @@ export function HomeClient() {
   }
 
   return (
-    <main className="sky-stage flex items-center justify-center px-4 py-10">
+    <motion.main 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.5 }}
+      className="sky-stage flex items-center justify-center px-4 py-10"
+    >
       <div className="relative z-10 flex w-full max-w-3xl flex-col items-center">
         <div className="pixel-logo text-center">
           <p className="pixel-title text-4xl text-white [text-shadow:4px_4px_0_#2b4a1b] sm:text-6xl">CODE</p>
@@ -42,7 +48,7 @@ export function HomeClient() {
             whileTap={{ scale: 0.95 }}
             className="w-full"
           >
-            <Link href="/lobby/create" className="pixel-button pixel-button-primary w-full text-4xl py-8 flex justify-center mb-6 font-bold tracking-widest shadow-[0_6px_0_0_#9a6a00] hover:brightness-110">
+            <Link href="/lobby/create" className="pixel-button pixel-button-primary w-full text-2xl py-6 flex justify-center mb-6 font-bold tracking-widest border-[8px] sm:border-[12px] shadow-[0_8px_0_0_#9a6a00,0_12px_10px_rgba(0,0,0,0.4)] hover:brightness-110 hover:-translate-y-1 transition-transform">
               CREATE GAME
             </Link>
           </motion.div>
@@ -78,6 +84,6 @@ export function HomeClient() {
           </Link>
         </div>
       </div>
-    </main>
+    </motion.main>
   );
 }

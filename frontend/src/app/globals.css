@@ -181,6 +181,35 @@ select {
   box-shadow: inset 0 0 0 4px #ff8b81, 0 2px 0 0 rgba(0,0,0,0.2);
 }
 
+/* Among Us Emergency Button – bold deep red with glow */
+.pixel-button-emergency {
+  background: #cc1100;
+  box-shadow:
+    inset 0 0 0 4px #ff3322,
+    0 4px 0 0 #7a0800,
+    0 0 0 2px #7a0800;
+  color: #fff;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+  border-color: #7a0800;
+}
+.pixel-button-emergency:hover:not(:disabled) {
+  background: #e01400;
+  box-shadow:
+    inset 0 0 0 4px #ff5544,
+    0 2px 0 0 #7a0800,
+    0 0 0 2px #7a0800;
+  transform: translateY(2px);
+}
+
+@keyframes emergency-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 4px #ff3322, 0 4px 0 0 #7a0800, 0 0 12px 3px rgba(204,17,0,0.5); }
+  50%       { box-shadow: inset 0 0 0 4px #ff6655, 0 4px 0 0 #7a0800, 0 0 22px 8px rgba(204,17,0,0.8); }
+}
+.animate-emergency-pulse {
+  animation: emergency-pulse 1.5s ease-in-out infinite;
+}
+
+
 .pixel-input {
   width: 100%;
   min-height: 44px;
