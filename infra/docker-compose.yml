@@ -23,9 +23,11 @@ services:
       HOST: 0.0.0.0
       DATABASE_URL: postgres://postgres:postgres@db:5432/amongus_coder
       CORS_ORIGIN: "*"
-      # Ollama: point ke host machine supaya bisa pakai Ollama lokal jika tersedia
-      OLLAMA_BASE_URL: http://host.docker.internal:11434
-      OLLAMA_MODEL: qwen2.5-coder:7b
+      # Ollama Cloud (gratis) — set OLLAMA_API_KEY di shell sebelum `docker compose up`.
+      # Fallback ke Ollama lokal di host machine kalau OLLAMA_BASE_URL tidak di-override.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-https://ollama.com}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3-coder:480b}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       # Piston public sandbox
       PISTON_BASE_URL: https://emkc.org/api/v2/piston
       # Rate limits

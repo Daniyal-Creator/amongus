@@ -17,11 +17,11 @@ export function GameReviewPanel({ sessionId, phase }: GameReviewPanelProps) {
       <p className="text-xl mb-3">AI Post-Game Review</p>
 
       {loading ? (
-        <div className="space-y-2">
-          <div className="pixel-skeleton h-4 w-full" />
-          <div className="pixel-skeleton h-4 w-5/6" />
-          <div className="pixel-skeleton h-4 w-4/6" />
-          <div className="pixel-skeleton h-4 w-full" />
+        <div className="flex flex-col items-center justify-center py-6 gap-4">
+          <div className="pixel-spinner" />
+          <p className="pixel-small text-[#5c4427] animate-pulse">
+            AI sedang menganalisis game session...
+          </p>
         </div>
       ) : null}
 

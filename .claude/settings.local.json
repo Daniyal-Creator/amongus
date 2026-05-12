@@ -11,7 +11,9 @@
       "mcp__12fa81a1-f9ca-495f-b98b-29b3830c3ac4__analyzeVideo",
       "mcp__12fa81a1-f9ca-495f-b98b-29b3830c3ac4__getConsoleLogs",
       "mcp__12fa81a1-f9ca-495f-b98b-29b3830c3ac4__getNetworkRequests",
-      "PowerShell(\\(Get-Content \"D:\\\\project pribadi\\\\Among Us Coder\\\\amongus-coder\\\\amongus-coder\\\\frontend\\\\src\\\\lib\\\\mock-api.ts\" | Measure-Object -Line\\).Lines)"
+      "PowerShell(\\(Get-Content \"D:\\\\project pribadi\\\\Among Us Coder\\\\amongus-coder\\\\amongus-coder\\\\frontend\\\\src\\\\lib\\\\mock-api.ts\" | Measure-Object -Line\\).Lines)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs"
     ]
   }
 }
