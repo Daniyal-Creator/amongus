@@ -7,7 +7,7 @@ import type { SessionConnection } from "@/lib/api";
 type ConnectionLike = Pick<SessionConnection, "send"> | null;
 
 export function useCursorPresence(
-  connection: ConnectionLike,
+  connectionRef: { current: ConnectionLike },
   cursors: CursorPresence[],
   currentPlayerId: string,
 ) {
@@ -21,7 +21,7 @@ export function useCursorPresence(
 
   const sendCursorPosition = useCallback(
     (anchor: number, head: number) => {
-      if (!connection) return;
+      if (!connectionRef.current) return;
       if (
         lastSentRef.current &&
         lastSentRef.current.anchor === anchor &&
@@ -35,12 +35,12 @@ export function useCursorPresence(
       }
 
       timerRef.current = window.setTimeout(() => {
-        connection.send({ type: "editor.cursor", anchor, head });
+        connectionRef.current?.send({ type: "editor.cursor", anchor, head });
         lastSentRef.current = { anchor, head };
         timerRef.current = null;
       }, 50);
     },
-    [connection],
+    [connectionRef],
   );
 
   return { remoteCursors, sendCursorPosition };

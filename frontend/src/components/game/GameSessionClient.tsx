@@ -1,6 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Image from "next/image";
+import { AnimatePresence, motion } from "framer-motion";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { connectSession, getSession, type SessionRealtimeMessage } from "@/lib/api";
 import { getSessionPlayerId } from "@/lib/player-session";
@@ -37,7 +39,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const playerId = typeof window !== "undefined" ? getSessionPlayerId(sessionId) : null;
 
   const { remoteCursors, sendCursorPosition } = useCursorPresence(
-    sessionConnectionRef.current,
+    sessionConnectionRef,
     cursors,
     playerId ?? "",
   );
@@ -216,10 +218,10 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
   return (
     <>
-      <main className="min-h-screen bg-[#0b1418] px-3 py-3 text-[color:var(--foreground)] sm:px-5">
+      <main className="min-h-screen bg-[url('/background/nature_2/origbig.png')] bg-cover bg-center bg-no-repeat bg-fixed px-3 py-3 text-white sm:px-5">
         <section className="mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[1800px] flex-col">
           {/* Header bar */}
-          <div className="pixel-panel mb-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-lg">
             <div className="flex flex-wrap items-center gap-3">
               <span className={`pixel-chip ${editorHeaderTone}`}>
                 Round {snapshot.round}/{snapshot.maxRounds}
@@ -234,23 +236,26 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
               ) : null}
               {snapshot.phase === "meeting" ? <span className="pixel-chip">MEETING</span> : null}
             </div>
-            <div className="pixel-panel px-3 py-2 text-2xl">{snapshot.timeRemaining}</div>
+            <div className="bg-white/10 rounded-xl border border-white/20 px-4 py-2 text-2xl font-bold tracking-widest">{snapshot.timeRemaining}</div>
           </div>
 
           {/* Main 3-column layout */}
-          <section className="grid flex-1 grid-cols-1 gap-0 border-4 border-[color:var(--brown)] bg-[color:var(--cream)] xl:grid-cols-[260px_minmax(0,1fr)_280px] xl:grid-rows-[1fr]">
+          <section className="grid flex-1 grid-cols-1 gap-4 xl:grid-cols-[260px_minmax(0,1fr)_280px] xl:grid-rows-[1fr]">
             {/* Left sidebar: players + objectives + feature panels */}
-            <aside className="border-b-4 border-[color:var(--brown)] p-4 xl:border-r-4 xl:border-b-0 xl:overflow-y-auto">
-              <h2 className="text-2xl">Players</h2>
+            <aside className="bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 p-5 xl:overflow-y-auto flex flex-col gap-5 shadow-lg">
+              <h2 className="text-2xl font-bold tracking-wider text-white/90 drop-shadow-sm">Players</h2>
               <div className="mt-4 space-y-2">
                 {snapshot.players.map((player) => (
                   <div key={player.id} className="flex items-center gap-3">
                     <div className="w-[36px] h-[36px] flex items-center justify-center border-[2px] border-[#5c4427] bg-[#8a6b45] shadow-[inset_0_0_4px_rgba(0,0,0,0.3)] shrink-0 relative">
-                      <img
+                      <Image
                         src={getCharacterAsset(player.id)}
                         alt={player.name}
+                        width={24}
+                        height={24}
                         style={{ imageRendering: "pixelated" }}
                         className="w-[24px] h-[24px] object-contain drop-shadow-md"
+                        unoptimized
                       />
                       <div className="absolute top-0.5 left-0.5 w-1.5 h-1.5 border-[1px] border-black/50 shadow-sm" style={{ backgroundColor: player.color }} title="Team Color" />
                     </div>
@@ -266,20 +271,20 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                 ))}
               </div>
 
-              <div className="mt-6">
-                <h3 className="text-xl">{sideTitle}</h3>
-                <p className="mt-1 text-base text-white/80">{sideCount}</p>
+              <div className="mt-2">
+                <h3 className="text-xl font-bold tracking-wider text-white/90 drop-shadow-sm">{sideTitle}</h3>
+                <p className="mt-1 text-sm text-white/70">{sideCount}</p>
                 <div className="mt-3 space-y-2">
                   {sidebarItems.map((objective) => (
                     <div
                       key={objective.title}
-                      className={`pixel-panel px-3 py-2 ${objective.done ? "bg-[#9ed46c]/30" : "bg-[#fff9ee]"}`}
+                      className={`px-3 py-2 rounded-xl border border-white/10 ${objective.done ? "bg-[#9ed46c]/30 border-[#9ed46c]/50" : "bg-white/5"}`}
                     >
-                      <p className="pixel-small">{objective.title}</p>
+                      <p className="pixel-small text-white/90">{objective.title}</p>
                     </div>
                   ))}
                 </div>
-                <p className="pixel-small mt-4 text-[color:var(--text-muted)]">
+                <p className="pixel-small mt-4 text-white/60">
                   {isCivilian
                     ? "Call emergency meeting if you see something sus."
                     : `${snapshot.sabotageCharges} charges left. Use wisely.`}
@@ -303,9 +308,9 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             </aside>
 
             {/* Center: Code Editor + Sandbox */}
-            <div className="border-b-4 border-[color:var(--brown)] xl:border-r-4 xl:border-b-0 flex flex-col h-full">
+            <div className="bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 flex flex-col h-full overflow-hidden shadow-lg">
               {/* Challenge header */}
-              <div className="border-b-4 border-[color:var(--brown)] bg-[#1a1b2e] px-4 py-2 flex items-center justify-between">
+              <div className="border-b border-white/10 bg-white/5 px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="pixel-small text-[#a2e858]">{snapshot.challenge.title}</span>
                   <span className="pixel-chip text-[10px]">{editorLang}</span>
@@ -338,9 +343,9 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             </div>
 
             {/* Right sidebar: Chat */}
-            <aside className="grid h-full grid-rows-[1fr_auto] overflow-hidden">
-              <div className="flex flex-col">
-                <div className="border-b-4 border-[color:var(--brown)] px-2 py-3 text-center text-base xl:text-lg shrink-0 leading-tight">
+            <aside className="grid h-full grid-rows-[1fr_auto] overflow-hidden bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-lg">
+              <div className="flex flex-col h-full">
+                <div className="border-b border-white/10 bg-white/5 px-4 py-3 text-center text-base xl:text-lg shrink-0 leading-tight font-bold tracking-wider text-white/90 drop-shadow-sm">
                   {rightPanelTitle}
                 </div>
                 <div className="p-3 flex-1 overflow-y-auto">
@@ -371,10 +376,10 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                 </div>
               </div>
 
-              <div className="border-t-4 border-[color:var(--brown)] p-3">
+              <div className="border-t border-white/10 bg-white/5 p-3">
                 <form onSubmit={handleChatSubmit} className="grid grid-cols-[1fr_42px] gap-2">
                   <input
-                    className="pixel-input min-h-[40px] text-xs px-2"
+                    className="pixel-input min-h-[40px] text-xs px-3 bg-black/40 border-white/20 text-white placeholder-white/40 rounded-lg"
                     placeholder={isCivilian ? "Type a message..." : "Covert message..."}
                     value={chatDraft}
                     onChange={(event) => setChatDraft(event.target.value)}
@@ -390,28 +395,41 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       </main>
 
       {/* Category Vote Overlay */}
+      <AnimatePresence>
       {snapshot.phase === "category" ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black px-4 text-center">
-          <div className="w-full max-w-7xl">
-            <p className="pixel-title text-4xl sm:text-6xl">VOTE CATEGORY</p>
-            <p className="pixel-small mt-3 text-white/70">Round {snapshot.round} of {snapshot.maxRounds}</p>
-            <div className="pixel-panel mt-6 w-full p-4 sm:p-5">
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[url('/background/nature_2/origbig.png')] bg-cover bg-center bg-no-repeat px-4 text-center before:absolute before:inset-0 before:bg-black/40 before:backdrop-blur-sm"
+        >
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 300, delay: 0.1 }}
+            className="w-full max-w-7xl relative z-10"
+          >
+            <p className="pixel-title text-4xl sm:text-6xl drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] text-white">VOTE CATEGORY</p>
+            <p className="pixel-small mt-3 text-white/80 drop-shadow-md">Round {snapshot.round} of {snapshot.maxRounds}</p>
+            <div className="bg-black/50 backdrop-blur-md border border-white/20 rounded-3xl mt-6 w-full p-6 sm:p-8 shadow-2xl">
               {/* Header row */}
-              <div className="mb-4 flex items-center justify-between gap-4">
+              <div className="mb-6 flex items-center justify-between gap-4">
                 <div className="text-left">
-                  <p className="text-xl">Choose challenge type</p>
-                  <p className="pixel-small mt-1 text-[color:var(--text-muted)]">
+                  <p className="text-2xl font-bold tracking-wider text-white">Choose challenge type</p>
+                  <p className="pixel-small mt-1 text-white/60">
                     Pilih dalam 10 detik. Jika seri, challenge akan diacak.
                   </p>
                 </div>
-                <div className={`pixel-panel min-w-[90px] px-3 py-2 text-center text-2xl shrink-0 ${timerIsLow ? "animate-pulse text-[color:var(--red)]" : ""}`}>
+                <div className={`bg-white/10 border border-white/20 rounded-xl min-w-[90px] px-4 py-2 text-center text-3xl font-bold tracking-widest text-white shadow-inner ${timerIsLow ? "animate-pulse text-[#ff8f8f]" : ""}`}>
                   {displayTime}
                 </div>
               </div>
               {/* 4-column landscape grid */}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {snapshot.categoryVoteOptions.map((category) => (
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     key={category.slug}
                     type="button"
                     onClick={() =>
@@ -420,27 +438,28 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                         categorySlug: category.slug,
                       })
                     }
-                    className={`pixel-panel flex flex-col px-4 py-3 text-left transition-colors ${
-                      snapshot.currentCategoryVote === category.slug ? "bg-[#9bc8dd]" : "bg-[#fff8ea] hover:bg-[#e8f4f8]"
+                    className={`flex flex-col px-5 py-4 text-left transition-all rounded-2xl border ${
+                      snapshot.currentCategoryVote === category.slug ? "bg-white/20 border-white/50 shadow-[0_0_15px_rgba(255,255,255,0.2)]" : "bg-white/5 border-white/10 hover:bg-white/10"
                     }`}
                   >
                     <div className="flex items-center justify-between w-full gap-2">
-                      <span className="pixel-small font-bold leading-tight">{category.name}</span>
-                      <span className="pixel-chip pixel-chip-green shrink-0">{category.votes}</span>
+                      <span className="pixel-small font-bold text-white text-lg tracking-wide">{category.name}</span>
+                      <span className="bg-[#a2e858] text-black px-2 py-0.5 rounded-md font-bold text-sm shrink-0">{category.votes}</span>
                     </div>
-                    <span className="pixel-small mt-2 text-[color:var(--text-muted)] text-[10px] leading-relaxed">
+                    <span className="pixel-small mt-3 text-white/70 text-xs leading-relaxed">
                       {category.description}
                     </span>
-                  </button>
+                  </motion.button>
                 ))}
               </div>
-              <p className="pixel-small mt-4 text-[color:var(--text-muted)]">
+              <p className="pixel-small mt-6 text-white/50">
                 Jika tidak semua pemain vote sampai timer habis, kategori dengan vote terbanyak yang dipilih.
               </p>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       ) : null}
+      </AnimatePresence>
 
       {/* Emergency Meeting Overlay */}
       {snapshot.phase === "meeting" ? (

@@ -19,20 +19,20 @@ describe("useCursorPresence", () => {
   ];
 
   it("filters out current player from remote cursors", () => {
-    const { result } = renderHook(() => useCursorPresence(null, cursors, "p2"));
+    const { result } = renderHook(() => useCursorPresence({ current: null }, cursors, "p2"));
 
     expect(result.current.remoteCursors).toHaveLength(2);
     expect(result.current.remoteCursors.map((c) => c.playerId)).toEqual(["p1", "p3"]);
   });
 
   it("returns all cursors when current player not in list", () => {
-    const { result } = renderHook(() => useCursorPresence(null, cursors, "p99"));
+    const { result } = renderHook(() => useCursorPresence({ current: null }, cursors, "p99"));
 
     expect(result.current.remoteCursors).toHaveLength(3);
   });
 
   it("returns empty array when no cursors", () => {
-    const { result } = renderHook(() => useCursorPresence(null, [], "p1"));
+    const { result } = renderHook(() => useCursorPresence({ current: null }, [], "p1"));
 
     expect(result.current.remoteCursors).toEqual([]);
   });
@@ -41,7 +41,7 @@ describe("useCursorPresence", () => {
     const mockSend = vi.fn();
     const connection = { send: mockSend };
 
-    const { result } = renderHook(() => useCursorPresence(connection, [], "p1"));
+    const { result } = renderHook(() => useCursorPresence({ current: connection }, [], "p1"));
 
     act(() => {
       result.current.sendCursorPosition(10, 15);
@@ -57,7 +57,7 @@ describe("useCursorPresence", () => {
   });
 
   it("does not send if connection is null", () => {
-    const { result } = renderHook(() => useCursorPresence(null, [], "p1"));
+    const { result } = renderHook(() => useCursorPresence({ current: null }, [], "p1"));
 
     act(() => {
       result.current.sendCursorPosition(10, 15);
@@ -71,7 +71,7 @@ describe("useCursorPresence", () => {
     const mockSend = vi.fn();
     const connection = { send: mockSend };
 
-    const { result } = renderHook(() => useCursorPresence(connection, [], "p1"));
+    const { result } = renderHook(() => useCursorPresence({ current: connection }, [], "p1"));
 
     act(() => {
       result.current.sendCursorPosition(1, 1);

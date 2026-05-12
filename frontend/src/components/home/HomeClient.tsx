@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 
 export function HomeClient() {
   const router = useRouter();
@@ -33,9 +34,18 @@ export function HomeClient() {
         </div>
 
         <div className="mt-16 w-full max-w-[520px]">
-          <Link href="/lobby/create" className="pixel-button pixel-button-primary w-full text-2xl py-6 flex justify-center mb-6 font-bold tracking-widest shadow-[0_4px_0_0_#9a6a00]">
-            CREATE GAME
-          </Link>
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.5, type: "spring", bounce: 0.5 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="w-full"
+          >
+            <Link href="/lobby/create" className="pixel-button pixel-button-primary w-full text-4xl py-8 flex justify-center mb-6 font-bold tracking-widest shadow-[0_6px_0_0_#9a6a00] hover:brightness-110">
+              CREATE GAME
+            </Link>
+          </motion.div>
 
           <form
             onSubmit={handleJoin}
