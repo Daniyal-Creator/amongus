@@ -81,7 +81,13 @@ export function registerAiRoutes(app: FastifyInstance) {
 
       const result = await ollamaGenerate(
         buildSabotageSuggestPrompt(ctx.challenge_title, ctx.language, ctx.editor_content),
-        { system: SABOTAGE_SUGGEST_SYSTEM, temperature: 0.8, maxTokens: 60, timeoutMs: 20_000 },
+        {
+          system: SABOTAGE_SUGGEST_SYSTEM,
+          temperature: 0.8,
+          maxTokens: 60,
+          timeoutMs: 20_000,
+          model: config.ollamaModelImposter,
+        },
       );
       if (!result.ok) {
         // Use a short fallback hint when AI is unavailable
@@ -107,7 +113,7 @@ export function registerAiRoutes(app: FastifyInstance) {
 
       return {
         suggestion: result.text,
-        model: config.ollamaModel,
+        model: config.ollamaModelImposter,
         remaining: rl.remaining,
       };
     },
@@ -150,7 +156,13 @@ export function registerAiRoutes(app: FastifyInstance) {
 
       const result = await ollamaGenerate(
         buildCopilotPoisonPrompt(ctx.challenge_title, ctx.language, ctx.editor_content),
-        { system: COPILOT_POISON_SYSTEM, temperature: 0.9, maxTokens: 220, timeoutMs: 20_000 },
+        {
+          system: COPILOT_POISON_SYSTEM,
+          temperature: 0.9,
+          maxTokens: 220,
+          timeoutMs: 20_000,
+          model: config.ollamaModelImposter,
+        },
       );
 
       const poisonedHint = result.ok
@@ -210,7 +222,13 @@ export function registerAiRoutes(app: FastifyInstance) {
         reason: ctx.end_reason ?? "unknown",
         sabotageLog: sabotageRows.rows.map((r) => r.description),
       }),
-      { system: REVIEW_SYSTEM, temperature: 0.5, maxTokens: 600, timeoutMs: 30_000 },
+      {
+        system: REVIEW_SYSTEM,
+        temperature: 0.5,
+        maxTokens: 600,
+        timeoutMs: 60_000,
+        model: config.ollamaModelReview,
+      },
     );
 
     const content = result.ok
@@ -228,9 +246,9 @@ export function registerAiRoutes(app: FastifyInstance) {
       `INSERT INTO session_reviews (id, session_id, content, model)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (session_id) DO UPDATE SET content = EXCLUDED.content, model = EXCLUDED.model`,
-      [createId(), sessionId, content, result.ok ? config.ollamaModel : "fallback"],
+      [createId(), sessionId, content, result.ok ? config.ollamaModelReview : "fallback"],
     );
 
-    return { review: content, model: result.ok ? config.ollamaModel : "fallback", cached: false };
+    return { review: content, model: result.ok ? config.ollamaModelReview : "fallback", cached: false };
   });
 }

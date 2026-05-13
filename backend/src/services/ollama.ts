@@ -8,7 +8,7 @@ export type OllamaError = { code: "unavailable" | "timeout" | "bad_response"; me
  */
 export async function ollamaGenerate(
   prompt: string,
-  opts: { system?: string; temperature?: number; maxTokens?: number; timeoutMs?: number } = {},
+  opts: { system?: string; temperature?: number; maxTokens?: number; timeoutMs?: number; model?: string } = {},
 ): Promise<{ ok: true; text: string } | { ok: false; error: OllamaError }> {
   const url = `${config.ollamaBaseUrl.replace(/\/+$/, "")}/api/generate`;
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -23,7 +23,7 @@ export async function ollamaGenerate(
       headers,
       signal: controller.signal,
       body: JSON.stringify({
-        model: config.ollamaModel,
+        model: opts.model ?? config.ollamaModel,
         prompt,
         system: opts.system,
         stream: false,

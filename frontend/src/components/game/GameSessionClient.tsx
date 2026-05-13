@@ -34,6 +34,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const editorSyncTimerRef = useRef<number | null>(null);
   const pendingEditorContentRef = useRef<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const meetingChatEndRef = useRef<HTMLDivElement | null>(null);
   const [roleRevealStage, setRoleRevealStage] = useState<"hidden" | "assigning" | "revealed">("hidden");
   const hasShownRoleRef = useRef(false);
   const [ghostToast, setGhostToast] = useState(false);
@@ -119,7 +120,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [snapshot?.chatMessages.length]);
+    meetingChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [snapshot?.chatMessages.length, snapshot?.imposterFeed?.length, snapshot?.phase]);
 
   useEffect(() => {
     if (snapshot?.phase === "playing" && !hasShownRoleRef.current) {
@@ -236,28 +238,43 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   return (
     <>
       <main className="min-h-screen bg-[url('/background/nature_2/origbig.png')] bg-cover bg-center bg-no-repeat bg-fixed px-3 py-3 text-white sm:px-5">
-        <section className="mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-[1800px] flex-col">
+        <section className="mx-auto flex min-h-[calc(100vh-1.5rem)] xl:h-[calc(100vh-1.5rem)] max-w-[1800px] flex-col">
           {/* Header bar */}
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-lg">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={`pixel-chip ${editorHeaderTone}`}>
-                Round {snapshot.round}/{snapshot.maxRounds}
-              </span>
-              <span className="pixel-small">{snapshot.category}</span>
+          <div className="mb-4 grid grid-cols-1 md:grid-cols-3 items-center gap-4 px-6 py-4 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-lg relative">
+            {/* Left: Role and Category */}
+            <div className="flex flex-wrap items-center gap-3 justify-center md:justify-start">
               {snapshot.phase === "playing" ? (
                 <span
-                  className={`pixel-chip ${isCivilian ? "pixel-chip-green" : "pixel-chip-red"}`}
+                  className={`pixel-chip text-sm px-4 py-1.5 ${isCivilian ? "pixel-chip-green" : "pixel-chip-red"}`}
                 >
                   {roleLabel}
                 </span>
               ) : null}
-              {snapshot.phase === "meeting" ? <span className="pixel-chip">MEETING</span> : null}
+              {snapshot.phase === "meeting" ? <span className="pixel-chip text-sm px-4 py-1.5">MEETING</span> : null}
+              <span className="pixel-small text-white/80">{snapshot.category}</span>
             </div>
-            <div className="bg-white/10 rounded-xl border border-white/20 px-4 py-2 text-2xl font-bold tracking-widest">{snapshot.timeRemaining}</div>
+
+            {/* Center: Round */}
+            <div className="flex justify-center order-first md:order-none">
+              <span className={`pixel-chip text-2xl px-8 py-2.5 shadow-lg tracking-widest ${editorHeaderTone}`}>
+                Round {snapshot.round}/{snapshot.maxRounds}
+              </span>
+            </div>
+
+            {/* Right: Timer */}
+            <div className="flex justify-center md:justify-end">
+              <div className={`rounded-xl border px-5 py-2 text-3xl font-bold tracking-widest transition-all duration-300 ${
+                timeSeconds <= 15
+                  ? "bg-red-500/20 border-red-500/50 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-emergency-pulse"
+                  : "bg-white/10 border-white/20 text-white"
+              }`}>
+                {snapshot.timeRemaining}
+              </div>
+            </div>
           </div>
 
           {/* Main 3-column layout */}
-          <section className="grid flex-1 grid-cols-1 gap-4 xl:grid-cols-[260px_minmax(0,1fr)_280px] xl:grid-rows-[1fr]">
+          <section className="grid flex-1 min-h-0 grid-cols-1 gap-4 xl:grid-cols-[260px_minmax(0,1fr)_280px] xl:grid-rows-[minmax(0,1fr)]">
             {/* Left sidebar: players + objectives + feature panels */}
             <aside className="bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 p-5 xl:overflow-y-auto flex flex-col gap-5 shadow-lg">
               <h2 className="text-2xl font-bold tracking-wider text-white/90 drop-shadow-sm">Players</h2>
@@ -361,40 +378,38 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             </div>
 
             {/* Right sidebar: Chat */}
-            <aside className="grid h-full grid-rows-[1fr_auto] overflow-hidden bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-lg">
-              <div className="flex flex-col h-full">
-                <div className="border-b border-white/10 bg-white/5 px-4 py-3 text-center text-base xl:text-lg shrink-0 leading-tight font-bold tracking-wider text-white/90 drop-shadow-sm">
-                  {rightPanelTitle}
-                </div>
-                <div className="p-3 flex-1 overflow-y-auto">
-                  {rightMessages.length === 0 ? (
-                    <p className="pixel-small text-center text-[color:var(--text-muted)]">
-                      No messages yet...
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {rightMessages.map((message, idx) => (
-                        <div key={`${message.user}-${message.timestamp}-${idx}`} className="pixel-small">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 rounded-sm shrink-0"
-                              style={{ backgroundColor: message.color }}
-                            />
-                            <span className="font-semibold" style={{ color: message.color }}>
-                              {message.user}
-                            </span>
-                            <span className="text-[color:var(--text-muted)] text-[10px]">{message.timestamp}</span>
-                          </div>
-                          <p className="mt-0.5 ml-[18px] text-[color:var(--text-muted)]">{message.message}</p>
+            <aside className="flex flex-col h-full overflow-hidden bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-lg">
+              <div className="border-b border-white/10 bg-white/5 px-4 py-3 text-center text-base xl:text-lg shrink-0 leading-tight font-bold tracking-wider text-white/90 drop-shadow-sm">
+                {rightPanelTitle}
+              </div>
+              <div className="p-3 flex-1 overflow-y-auto min-h-0">
+                {rightMessages.length === 0 ? (
+                  <p className="pixel-small text-center text-[color:var(--text-muted)]">
+                    No messages yet...
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {rightMessages.map((message, idx) => (
+                      <div key={`${message.user}-${message.timestamp}-${idx}`} className="pixel-small">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 rounded-sm shrink-0"
+                            style={{ backgroundColor: message.color }}
+                          />
+                          <span className="font-semibold" style={{ color: message.color }}>
+                            {message.user}
+                          </span>
+                          <span className="text-[color:var(--text-muted)] text-[10px]">{message.timestamp}</span>
                         </div>
-                      ))}
-                      <div ref={chatEndRef} />
-                    </div>
-                  )}
-                </div>
+                        <p className="mt-0.5 ml-[18px] text-[color:var(--text-muted)]">{message.message}</p>
+                      </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
+                )}
               </div>
 
-              <div className="border-t border-white/10 bg-white/5 p-3">
+              <div className="border-t border-white/10 bg-white/5 p-3 shrink-0">
                 <form onSubmit={handleChatSubmit} className="grid grid-cols-[1fr_42px] gap-2">
                   <input
                     className="pixel-input min-h-[40px] text-xs px-3 bg-black/40 border-white/20 text-white placeholder-white/40 rounded-lg"
@@ -402,8 +417,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                     value={chatDraft}
                     onChange={(event) => setChatDraft(event.target.value)}
                   />
-                  <button type="submit" className="pixel-button pixel-button-primary px-0 flex items-center justify-center">
-                    <Send className="w-4 h-4" />
+                  <button type="submit" className="pixel-button pixel-button-primary px-0 flex items-center justify-center relative" title="Send Message">
+                    <Send size={20} color="white" strokeWidth={2.5} className="relative z-10 drop-shadow-[1px_1px_0_rgba(0,0,0,0.5)]" />
                   </button>
                 </form>
               </div>
@@ -584,6 +599,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                       <span className="text-[#39404f]">{msg.message}</span>
                     </div>
                   ))}
+                  <div ref={meetingChatEndRef} />
                 </div>
                 <div className="p-3 border-t-[4px] border-[#8b5a2b] bg-[#e6c9a8]">
                   <form onSubmit={handleChatSubmit} className="flex gap-2">

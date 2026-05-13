@@ -1,5 +1,6 @@
 import type {
   CategoryOption,
+  ChallengeTest,
   ChatMessage,
   GameObjective,
   GameSnapshot,
@@ -37,7 +38,7 @@ type MockChallenge = {
   description: string;
   language: string;
   difficulty: string;
-  tests: Array<{ input: string; expected: string }>;
+  tests: ChallengeTest[];
   objectives: GameObjective[];
   imposterObjectives: GameObjective[];
   editorContent: string;

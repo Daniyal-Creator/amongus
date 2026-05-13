@@ -59,8 +59,11 @@ export type RoundStateItem = {
 };
 
 export type ChallengeTest = {
-  input: string;
-  expected: string;
+  name?: string;
+  setup?: string;
+  expression?: string;
+  input?: string;
+  expected: unknown;
 };
 
 export type EditorLine = {

@@ -35,9 +35,24 @@ export const CHALLENGE_SEEDS = [
         difficulty: "medium",
         roundNumber: 1,
         tests: [
-            { input: "Counter().decrement()", expected: "count berkurang 1" },
-            { input: "counter.reset()", expected: "count kembali ke 0" },
-            { input: "counter.value()", expected: "mengembalikan count saat ini" },
+            {
+                name: "decrement() should subtract 1, not 2",
+                setup: "c = Counter()\nc.decrement()",
+                expression: "c.count",
+                expected: -1,
+            },
+            {
+                name: "reset() should set count back to 0",
+                setup: "c = Counter()\nc.increment()\nc.increment()\nc.reset()",
+                expression: "c.count",
+                expected: 0,
+            },
+            {
+                name: "value() should return the current count",
+                setup: "c = Counter()\nc.increment()\nc.increment()\nc.increment()",
+                expression: "c.value()",
+                expected: 3,
+            },
         ],
         objectives: [
             { title: "Pass 3 hidden test cases", description: "Perbaiki decrement, reset, dan value agar hidden tests lolos.", done: false },
@@ -96,9 +111,24 @@ export const CHALLENGE_SEEDS = [
         difficulty: "medium",
         roundNumber: 2,
         tests: [
-            { input: "MinStack().push(3)", expected: "stack = [3]" },
-            { input: "stack.get_min()", expected: "3" },
-            { input: "stack.pop()", expected: "removes top, returns 3" },
+            {
+                name: "push(3) then get_min() returns 3",
+                setup: "s = MinStack()\ns.push(3)",
+                expression: "s.get_min()",
+                expected: 3,
+            },
+            {
+                name: "min tracking stays correct after pushing smaller values",
+                setup: "s = MinStack()\ns.push(3)\ns.push(1)\ns.push(2)",
+                expression: "s.get_min()",
+                expected: 1,
+            },
+            {
+                name: "pop() returns the value that was removed",
+                setup: "s = MinStack()\ns.push(5)\ns.push(3)",
+                expression: "s.pop()",
+                expected: 3,
+            },
         ],
         objectives: [
             { title: "Fix pop() return value", description: "pop() harus return item yang di-remove.", done: false },
@@ -156,9 +186,24 @@ export const CHALLENGE_SEEDS = [
         difficulty: "hard",
         roundNumber: 3,
         tests: [
-            { input: "ll.insert_at(0, 10)", expected: "list = [10]" },
-            { input: "ll.insert_at(1, 20)", expected: "list = [10, 20]" },
-            { input: "ll.delete_at(0)", expected: "list = [20]" },
+            {
+                name: "insert_at(0) on non-empty list must preserve existing nodes",
+                setup: "ll = LinkedList()\nll.insert_at(0, 10)\nll.insert_at(1, 20)\nll.insert_at(0, 30)",
+                expression: "[ll.head.val, ll.head.next.val, ll.head.next.next.val, ll.length]",
+                expected: [30, 10, 20, 3],
+            },
+            {
+                name: "delete_at(index) must return the removed value",
+                setup: "ll = LinkedList()\nll.insert_at(0, 10)\nll.insert_at(1, 20)\nll.insert_at(2, 30)\nresult = ll.delete_at(1)",
+                expression: "result",
+                expected: 20,
+            },
+            {
+                name: "delete_at updates pointer and length correctly",
+                setup: "ll = LinkedList()\nll.insert_at(0, 10)\nll.insert_at(1, 20)\nll.insert_at(2, 30)\nll.delete_at(1)",
+                expression: "[ll.head.val, ll.head.next.val, ll.length]",
+                expected: [10, 30, 2],
+            },
         ],
         objectives: [
             { title: "Fix insert_at boundary check", description: "insert_at harus handle index 0 dan index == length.", done: false },
@@ -231,9 +276,24 @@ export const CHALLENGE_SEEDS = [
         difficulty: "hard",
         roundNumber: 4,
         tests: [
-            { input: "q.enqueue(1)", expected: "queue = [1]" },
-            { input: "q.dequeue()", expected: "returns 1, queue = []" },
-            { input: "q.is_full()", expected: "False when not full" },
+            {
+                name: "is_full() returns False on an empty queue",
+                setup: "q = CircularQueue(3)",
+                expression: "q.is_full()",
+                expected: false,
+            },
+            {
+                name: "dequeue() returns the front item",
+                setup: "q = CircularQueue(3)\nq.enqueue(1)\nq.enqueue(2)",
+                expression: "q.dequeue()",
+                expected: 1,
+            },
+            {
+                name: "enqueue wraps around correctly after dequeue (modular arithmetic)",
+                setup: "q = CircularQueue(3)\nq.enqueue(1)\nq.enqueue(2)\nq.enqueue(3)\nq.dequeue()\nq.enqueue(4)",
+                expression: "[q.dequeue(), q.dequeue(), q.dequeue()]",
+                expected: [2, 3, 4],
+            },
         ],
         objectives: [
             { title: "Fix enqueue wrap-around", description: "enqueue harus wrap index ketika rear = capacity.", done: false },
@@ -294,9 +354,21 @@ export const CHALLENGE_SEEDS = [
         difficulty: "medium",
         roundNumber: 1,
         tests: [
-            { input: "[1, 2, 3]", expected: "6" },
-            { input: "[]", expected: "0" },
-            { input: "[0, -1, 5]", expected: "4" },
+            {
+                name: "sumRange([1, 2, 3]) === 6",
+                expression: "sumRange([1, 2, 3])",
+                expected: 6,
+            },
+            {
+                name: "sumRange([]) must return 0, not null",
+                expression: "sumRange([])",
+                expected: 0,
+            },
+            {
+                name: "sumRange([0, -1, 5]) === 4",
+                expression: "sumRange([0, -1, 5])",
+                expected: 4,
+            },
         ],
         objectives: [
             { title: "Fix off-by-one in loop", description: "Loop boundary pakai < bukan <=.", done: false },
@@ -316,7 +388,7 @@ export const CHALLENGE_SEEDS = [
             { user: "ghost.ai", color: "#ff688b", timestamp: "08:30", message: "Subtle bug: change strict edge handling for empty state." },
         ],
         editorLines: [
-            { number: 1, content: "export function sumRange(values) {" },
+            { number: 1, content: "function sumRange(values) {" },
             { number: 2, content: "  if (!Array.isArray(values)) {" },
             { number: 3, content: "    return null;" },
             { number: 4, content: "  }" },
@@ -343,9 +415,21 @@ export const CHALLENGE_SEEDS = [
         difficulty: "medium",
         roundNumber: 2,
         tests: [
-            { input: "[1,3,5,7,9], 5", expected: "2" },
-            { input: "[1,3,5,7,9], 4", expected: "-1" },
-            { input: "[2], 2", expected: "0" },
+            {
+                name: "binarySearch([1,3,5,7,9], 5) === 2",
+                expression: "binarySearch([1,3,5,7,9], 5)",
+                expected: 2,
+            },
+            {
+                name: "binarySearch([1,3,5,7,9], 4) === -1",
+                expression: "binarySearch([1,3,5,7,9], 4)",
+                expected: -1,
+            },
+            {
+                name: "binarySearch([2], 2) === 0",
+                expression: "binarySearch([2], 2)",
+                expected: 0,
+            },
         ],
         objectives: [
             { title: "Fix infinite loop", description: "Mid calculation menyebabkan infinite loop. Fix the formula.", done: false },
@@ -362,7 +446,7 @@ export const CHALLENGE_SEEDS = [
             { user: "ghost.ai", color: "#ff688b", timestamp: "09:10", message: "Target: keep Math.floor((low + high) / 2) as (low + high) / 2 (no floor)." },
         ],
         editorLines: [
-            { number: 1, content: "export function binarySearch(arr, target) {" },
+            { number: 1, content: "function binarySearch(arr, target) {" },
             { number: 2, content: "  let low = 0;" },
             { number: 3, content: "  let high = arr.length - 1;" },
             { number: 4, content: "" },
@@ -394,9 +478,21 @@ export const CHALLENGE_SEEDS = [
         difficulty: "hard",
         roundNumber: 3,
         tests: [
-            { input: "[1,3,5], [2,4,6]", expected: "[1,2,3,4,5,6]" },
-            { input: "[], [1,2]", expected: "[1,2]" },
-            { input: "[1], []", expected: "[1]" },
+            {
+                name: "mergeSorted([1,3,5], [2,4,6]) === [1,2,3,4,5,6]",
+                expression: "mergeSorted([1,3,5], [2,4,6])",
+                expected: [1, 2, 3, 4, 5, 6],
+            },
+            {
+                name: "mergeSorted([], [1,2]) === [1,2]",
+                expression: "mergeSorted([], [1, 2])",
+                expected: [1, 2],
+            },
+            {
+                name: "mergeSorted([1], []) === [1] (remaining elements copied)",
+                expression: "mergeSorted([1], [])",
+                expected: [1],
+            },
         ],
         objectives: [
             { title: "Fix remaining elements", description: "Setelah main loop, sisa elemen dari kedua array harus ditambahkan.", done: false },
@@ -413,7 +509,7 @@ export const CHALLENGE_SEEDS = [
             { user: "ghost.ai", color: "#ff688b", timestamp: "09:30", message: "Target: remove the while loops that copy remaining elements." },
         ],
         editorLines: [
-            { number: 1, content: "export function mergeSorted(arr1, arr2) {" },
+            { number: 1, content: "function mergeSorted(arr1, arr2) {" },
             { number: 2, content: "  const result = [];" },
             { number: 3, content: "  let i = 0;" },
             { number: 4, content: "  let j = 0;" },
@@ -451,9 +547,21 @@ export const CHALLENGE_SEEDS = [
         difficulty: "hard",
         roundNumber: 4,
         tests: [
-            { input: "[1, [2, 3], [4, [5]]]", expected: "[1, 2, 3, 4, 5]" },
-            { input: "[[1], [[2]], [[[3]]]]", expected: "[1, 2, 3]" },
-            { input: "[]", expected: "[]" },
+            {
+                name: "flatten([1, [2, 3], [4, [5]]]) === [1, 2, 3, 4, 5]",
+                expression: "flatten([1, [2, 3], [4, [5]]])",
+                expected: [1, 2, 3, 4, 5],
+            },
+            {
+                name: "flatten deeply nested arrays",
+                expression: "flatten([[1], [[2]], [[[3]]]])",
+                expected: [1, 2, 3],
+            },
+            {
+                name: "flatten([]) === []",
+                expression: "flatten([])",
+                expected: [],
+            },
         ],
         objectives: [
             { title: "Fix recursion base case", description: "Array.isArray check harus recursive, bukan hanya satu level.", done: false },
@@ -470,7 +578,7 @@ export const CHALLENGE_SEEDS = [
             { user: "ghost.ai", color: "#ff688b", timestamp: "09:50", message: "Target: change flatten(item) to [item] to break recursion." },
         ],
         editorLines: [
-            { number: 1, content: "export function flatten(arr) {" },
+            { number: 1, content: "function flatten(arr) {" },
             { number: 2, content: "  const result = [];" },
             { number: 3, content: "" },
             { number: 4, content: "  for (const item of arr) {" },
@@ -498,9 +606,24 @@ export const CHALLENGE_SEEDS = [
         difficulty: "easy",
         roundNumber: 1,
         tests: [
-            { input: "toggleTheme()", expected: "body class toggles 'dark'" },
-            { input: "localStorage", expected: "preference saved" },
-            { input: "page reload", expected: "theme persisted" },
+            {
+                name: "toggleTheme adds 'dark' class on first call",
+                setup: "toggleTheme()",
+                expression: "document.body.classList.contains('dark')",
+                expected: true,
+            },
+            {
+                name: "toggleTheme actually toggles off on second call (not add)",
+                setup: "toggleTheme()\ntoggleTheme()",
+                expression: "document.body.classList.contains('dark')",
+                expected: false,
+            },
+            {
+                name: "initTheme restores 'dark' from the correct 'theme' localStorage key",
+                setup: "localStorage.setItem('theme', 'dark')\ninitTheme()",
+                expression: "document.body.classList.contains('dark')",
+                expected: true,
+            },
         ],
         objectives: [
             { title: "Fix classList toggle", description: "classList.add harus diganti toggle.", done: false },
@@ -529,14 +652,11 @@ export const CHALLENGE_SEEDS = [
             { number: 10, content: "  // BUG: should be toggle, not add" },
             { number: 11, content: "  document.body.classList.add('dark');" },
             { number: 12, content: "  const isDark = document.body.classList.contains('dark');" },
-            { number: 13, content: "  // BUG: saves to wrong key" },
-            { number: 14, content: "  localStorage.setItem('theme', isDark ? 'dark' : 'light');" },
-            { number: 15, content: "}" },
-            { number: 16, content: "" },
-            { number: 17, content: "document.addEventListener('DOMContentLoaded', initTheme);" },
+            { number: 13, content: "  localStorage.setItem('theme', isDark ? 'dark' : 'light');" },
+            { number: 14, content: "}" },
         ],
     },
-    // ───────── Web Dev Round 2-4 ─────────
+    // ───────── Web Dev Round 2 ─────────
     {
         id: "challenge-fetch-webdev-r2",
         categorySlug: "web-dev",
@@ -546,9 +666,24 @@ export const CHALLENGE_SEEDS = [
         difficulty: "medium",
         roundNumber: 2,
         tests: [
-            { input: "fetchUsers()", expected: "returns array of users" },
-            { input: "fetchUsers() with 404", expected: "throws error with message" },
-            { input: "fetchUsers() with network error", expected: "handles gracefully" },
+            {
+                name: "fetchUsers returns parsed array on success",
+                setup: "__setFetchMock(() => ({ ok: true, status: 200, json: async () => [{ name: 'Alice' }, { name: 'Bob' }] }))",
+                expression: "(await fetchUsers()).length",
+                expected: 2,
+            },
+            {
+                name: "fetchUsers throws when response.ok is false (404)",
+                setup: "__setFetchMock(() => ({ ok: false, status: 404, statusText: 'Not Found', json: async () => null }))",
+                expression: "await fetchUsers().then(() => 'success').catch(() => 'threw')",
+                expected: "threw",
+            },
+            {
+                name: "fetchUsers handles network error without uncaught rejection",
+                setup: "__setFetchMock(() => { throw new Error('Network down') })",
+                expression: "await fetchUsers().then(() => 'success').catch(() => 'caught')",
+                expected: "caught",
+            },
         ],
         objectives: [
             { title: "Add missing await", description: "response.json() needs await.", done: false },
@@ -568,26 +703,15 @@ export const CHALLENGE_SEEDS = [
             { number: 1, content: "async function fetchUsers() {" },
             { number: 2, content: "  const response = await fetch('/api/users');" },
             { number: 3, content: "" },
-            { number: 4, content: "  // BUG: no error check on response" },
+            { number: 4, content: "  // BUG: no error check on response.ok" },
             { number: 5, content: "  // BUG: missing await on json()" },
             { number: 6, content: "  const data = response.json();" },
             { number: 7, content: "" },
             { number: 8, content: "  return data;" },
             { number: 9, content: "}" },
-            { number: 10, content: "" },
-            { number: 11, content: "async function displayUsers() {" },
-            { number: 12, content: "  const users = await fetchUsers();" },
-            { number: 13, content: "  const list = document.getElementById('user-list');" },
-            { number: 14, content: "" },
-            { number: 15, content: "  // BUG: no null check on list element" },
-            { number: 16, content: "  users.forEach(user => {" },
-            { number: 17, content: "    const li = document.createElement('li');" },
-            { number: 18, content: "    li.textContent = user.name;" },
-            { number: 19, content: "    list.appendChild(li);" },
-            { number: 20, content: "  });" },
-            { number: 21, content: "}" },
         ],
     },
+    // ───────── Web Dev Round 3 ─────────
     {
         id: "challenge-form-webdev-r3",
         categorySlug: "web-dev",
@@ -597,14 +721,29 @@ export const CHALLENGE_SEEDS = [
         difficulty: "medium",
         roundNumber: 3,
         tests: [
-            { input: "submit with empty name", expected: "shows error, blocks submit" },
-            { input: "submit with valid data", expected: "submits successfully" },
-            { input: "submit with spaces only", expected: "treated as empty" },
+            {
+                name: "Valid name + email pass validation",
+                setup: "document.getElementById('name').value = 'Alice'\ndocument.getElementById('email').value = 'a@b.com'",
+                expression: "validateForm({ preventDefault: () => {} }).valid",
+                expected: true,
+            },
+            {
+                name: "Whitespace-only name is rejected (must use trim)",
+                setup: "document.getElementById('name').value = '   '\ndocument.getElementById('email').value = 'a@b.com'",
+                expression: "validateForm({ preventDefault: () => {} }).valid",
+                expected: false,
+            },
+            {
+                name: "validateForm calls event.preventDefault()",
+                setup: "let prevented = false\nconst ev = { preventDefault: () => { prevented = true } }\ndocument.getElementById('name').value = 'Alice'\ndocument.getElementById('email').value = 'a@b.com'\nvalidateForm(ev)",
+                expression: "prevented",
+                expected: true,
+            },
         ],
         objectives: [
             { title: "Add preventDefault", description: "Block form submission saat validasi gagal.", done: false },
             { title: "Add trim()", description: "Trim whitespace sebelum validasi.", done: false },
-            { title: "Fix error display", description: "Show error message near the input.", done: false },
+            { title: "Return structured result", description: "Return { valid, error } instead of using alert().", done: false },
         ],
         imposterObjectives: [
             { title: "Remove preventDefault", description: "Let form submit even on validation failure.", done: false },
@@ -616,25 +755,24 @@ export const CHALLENGE_SEEDS = [
         editorLines: [
             { number: 1, content: "function validateForm(event) {" },
             { number: 2, content: "  // BUG: missing event.preventDefault()" },
-            { number: 3, content: "  const name = document.getElementById('name').value;" },
-            { number: 4, content: "  const email = document.getElementById('email').value;" },
-            { number: 5, content: "" },
-            { number: 6, content: "  // BUG: doesn't trim whitespace" },
-            { number: 7, content: "  if (name === '') {" },
-            { number: 8, content: "    // BUG: alert instead of inline error" },
-            { number: 9, content: "    alert('Name is required');" },
-            { number: 10, content: "    return;" },
-            { number: 11, content: "  }" },
-            { number: 12, content: "" },
-            { number: 13, content: "  if (!email.includes('@')) {" },
-            { number: 14, content: "    alert('Invalid email');" },
-            { number: 15, content: "    return;" },
-            { number: 16, content: "  }" },
-            { number: 17, content: "" },
-            { number: 18, content: "  console.log('Form submitted:', { name, email });" },
-            { number: 19, content: "}" },
+            { number: 3, content: "" },
+            { number: 4, content: "  const name = document.getElementById('name').value;" },
+            { number: 5, content: "  const email = document.getElementById('email').value;" },
+            { number: 6, content: "" },
+            { number: 7, content: "  // BUG: doesn't trim whitespace" },
+            { number: 8, content: "  if (name === '') {" },
+            { number: 9, content: "    return { valid: false, error: 'Name is required' };" },
+            { number: 10, content: "  }" },
+            { number: 11, content: "" },
+            { number: 12, content: "  if (!email.includes('@')) {" },
+            { number: 13, content: "    return { valid: false, error: 'Invalid email' };" },
+            { number: 14, content: "  }" },
+            { number: 15, content: "" },
+            { number: 16, content: "  return { valid: true, data: { name, email } };" },
+            { number: 17, content: "}" },
         ],
     },
+    // ───────── Web Dev Round 4 ─────────
     {
         id: "challenge-event-webdev-r4",
         categorySlug: "web-dev",
@@ -644,14 +782,29 @@ export const CHALLENGE_SEEDS = [
         difficulty: "hard",
         roundNumber: 4,
         tests: [
-            { input: "click on dynamic button", expected: "handler fires" },
-            { input: "click on nested span inside button", expected: "still fires" },
-            { input: "click outside buttons", expected: "no action" },
+            {
+                name: "Direct click on .action-btn returns the action",
+                setup: "const btn = document.createElement('button')\nbtn.classList.add('action-btn')\nbtn.dataset.action = 'save'",
+                expression: "handleEvent({ target: btn })",
+                expected: "save",
+            },
+            {
+                name: "Click on nested span finds parent .action-btn via closest()",
+                setup: "const btn = document.createElement('button')\nbtn.classList.add('action-btn')\nbtn.dataset.action = 'delete'\nconst span = document.createElement('span')\nbtn.appendChild(span)",
+                expression: "handleEvent({ target: span })",
+                expected: "delete",
+            },
+            {
+                name: "Click outside any .action-btn returns null",
+                setup: "const div = document.createElement('div')",
+                expression: "handleEvent({ target: div })",
+                expected: null,
+            },
         ],
         objectives: [
-            { title: "Fix delegation target", description: "Attach listener ke parent, bukan individual buttons.", done: false },
-            { title: "Fix closest() usage", description: "Gunakan closest() untuk handle nested clicks.", done: false },
-            { title: "Fix early return", description: "Return early if closest() returns null.", done: false },
+            { title: "Use closest() for delegation", description: "findActionButton harus pakai closest('.action-btn').", done: false },
+            { title: "Handle null target", description: "Return null jika closest() tidak menemukan match.", done: false },
+            { title: "Pure function design", description: "Tidak depend pada querySelectorAll global.", done: false },
         ],
         imposterObjectives: [
             { title: "Break closest() call", description: "Use parentElement instead of closest().", done: false },
@@ -661,31 +814,23 @@ export const CHALLENGE_SEEDS = [
         chatMessages: [],
         imposterFeed: [],
         editorLines: [
-            { number: 1, content: "// BUG: attaching to each button individually (doesn't work for dynamic)" },
-            { number: 2, content: "document.querySelectorAll('.action-btn').forEach(btn => {" },
-            { number: 3, content: "  btn.addEventListener('click', handleAction);" },
-            { number: 4, content: "});" },
+            { number: 1, content: "function findActionButton(event) {" },
+            { number: 2, content: "  // BUG: should use closest('.action-btn') to handle nested children" },
+            { number: 3, content: "  return event.target;" },
+            { number: 4, content: "}" },
             { number: 5, content: "" },
-            { number: 6, content: "function handleAction(event) {" },
-            { number: 7, content: "  // BUG: event.target might be a child element" },
-            { number: 8, content: "  const button = event.target;" },
-            { number: 9, content: "  const action = button.dataset.action;" },
+            { number: 6, content: "function getAction(button) {" },
+            { number: 7, content: "  // BUG: crashes when button is null" },
+            { number: 8, content: "  return button.dataset.action;" },
+            { number: 9, content: "}" },
             { number: 10, content: "" },
-            { number: 11, content: "  if (!action) return;" },
-            { number: 12, content: "" },
-            { number: 13, content: "  console.log('Action:', action);" },
+            { number: 11, content: "function handleEvent(event) {" },
+            { number: 12, content: "  const button = findActionButton(event);" },
+            { number: 13, content: "  return getAction(button);" },
             { number: 14, content: "}" },
-            { number: 15, content: "" },
-            { number: 16, content: "// Should be: use event delegation on parent" },
-            { number: 17, content: "// document.getElementById('button-container')" },
-            { number: 18, content: "//   .addEventListener('click', (e) => {" },
-            { number: 19, content: "//     const btn = e.target.closest('.action-btn');" },
-            { number: 20, content: "//     if (!btn) return;" },
-            { number: 21, content: "//     handleAction({ target: btn });" },
-            { number: 22, content: "//   });" },
         ],
     },
-    // ───────── Speedrun Logic Round 1-2 ─────────
+    // ───────── Speedrun Logic Round 1 ─────────
     {
         id: "challenge-fizzbuzz-speedrun-r1",
         categorySlug: "algorithms-lite",
@@ -695,9 +840,21 @@ export const CHALLENGE_SEEDS = [
         difficulty: "easy",
         roundNumber: 1,
         tests: [
-            { input: "15", expected: "FizzBuzz" },
-            { input: "3", expected: "Fizz" },
-            { input: "5", expected: "Buzz" },
+            {
+                name: "fizzBuzz(15) last entry === 'FizzBuzz'",
+                expression: "fizzBuzz(15)[14]",
+                expected: "FizzBuzz",
+            },
+            {
+                name: "fizzBuzz(5)[2] === 'Fizz' (i=3)",
+                expression: "fizzBuzz(5)[2]",
+                expected: "Fizz",
+            },
+            {
+                name: "fizzBuzz(5)[4] === 'Buzz' (i=5)",
+                expression: "fizzBuzz(5)[4]",
+                expected: "Buzz",
+            },
         ],
         objectives: [
             { title: "Fix order of checks", description: "Check divisible by 15 first, then 3, then 5.", done: false },
@@ -710,7 +867,7 @@ export const CHALLENGE_SEEDS = [
         chatMessages: [],
         imposterFeed: [],
         editorLines: [
-            { number: 1, content: "export function fizzBuzz(n) {" },
+            { number: 1, content: "function fizzBuzz(n) {" },
             { number: 2, content: "  const result = [];" },
             { number: 3, content: "" },
             { number: 4, content: "  for (let i = 1; i <= n; i++) {" },
@@ -722,7 +879,7 @@ export const CHALLENGE_SEEDS = [
             { number: 10, content: "    } else if (i % 15 === 0) {" },
             { number: 11, content: "      result.push('FizzBuzz');" },
             { number: 12, content: "    } else {" },
-            { number: 13, content: "      result.push(i);" },
+            { number: 13, content: "      result.push(String(i));" },
             { number: 14, content: "    }" },
             { number: 15, content: "  }" },
             { number: 16, content: "" },
@@ -730,6 +887,7 @@ export const CHALLENGE_SEEDS = [
             { number: 18, content: "}" },
         ],
     },
+    // ───────── Speedrun Logic Round 2 ─────────
     {
         id: "challenge-palindrome-speedrun-r2",
         categorySlug: "algorithms-lite",
@@ -739,9 +897,21 @@ export const CHALLENGE_SEEDS = [
         difficulty: "easy",
         roundNumber: 2,
         tests: [
-            { input: "'A man, a plan, a canal: Panama'", expected: "true" },
-            { input: "'race a car'", expected: "false" },
-            { input: "''", expected: "true" },
+            {
+                name: "Classic mixed-case palindrome with punctuation",
+                expression: "isPalindrome('A man, a plan, a canal: Panama')",
+                expected: true,
+            },
+            {
+                name: "Non-palindrome with spaces",
+                expression: "isPalindrome('race a car')",
+                expected: false,
+            },
+            {
+                name: "Empty string is a palindrome",
+                expression: "isPalindrome('')",
+                expected: true,
+            },
         ],
         objectives: [
             { title: "Add lowercase conversion", description: "Compare in lowercase.", done: false },
@@ -754,7 +924,7 @@ export const CHALLENGE_SEEDS = [
         chatMessages: [],
         imposterFeed: [],
         editorLines: [
-            { number: 1, content: "export function isPalindrome(str) {" },
+            { number: 1, content: "function isPalindrome(str) {" },
             { number: 2, content: "  // BUG: doesn't strip non-alphanumeric" },
             { number: 3, content: "  // BUG: case sensitive comparison" },
             { number: 4, content: "  const cleaned = str;" },

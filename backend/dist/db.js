@@ -140,6 +140,65 @@ export async function initDatabase() {
       tone TEXT NOT NULL,
       sort_order INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS game_results (
+      id TEXT PRIMARY KEY,
+      session_id TEXT UNIQUE NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      category_slug TEXT NOT NULL,
+      winner_team TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS leaderboard_history (
+      id TEXT PRIMARY KEY,
+      player_id TEXT NOT NULL REFERENCES lobby_players(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      category_slug TEXT NOT NULL,
+      role TEXT NOT NULL,
+      won BOOLEAN NOT NULL,
+      score_delta INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_leaderboard_history_week ON leaderboard_history(created_at);
+
+    CREATE TABLE IF NOT EXISTS session_security_scans (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES lobby_players(id) ON DELETE CASCADE,
+      passed BOOLEAN NOT NULL,
+      badge TEXT NOT NULL,
+      report JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS session_reviews (
+      id TEXT PRIMARY KEY,
+      session_id TEXT UNIQUE NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      model TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS session_sabotage_log (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      player_id TEXT REFERENCES lobby_players(id) ON DELETE SET NULL,
+      mutation_name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      poisoned BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS session_test_runs (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      player_id TEXT REFERENCES lobby_players(id) ON DELETE SET NULL,
+      passed_count INTEGER NOT NULL,
+      total_count INTEGER NOT NULL,
+      results JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
     for (const category of CATEGORY_SEEDS) {
         await query(`

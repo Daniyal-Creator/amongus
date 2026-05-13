@@ -1,8 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { createId, query } from "../db.js";
 import { loadSessionRole } from "../services/auth-guard.js";
-import { runTests, runCode } from "../services/sandbox.js";
+import { runChallengeTests, runTests, runCode } from "../services/sandbox.js";
+import type { ChallengeTest } from "../services/sandbox.js";
 import { rateLimit } from "../services/rate-limit.js";
+
+function isExpressionTest(t: unknown): t is ChallengeTest {
+  return typeof t === "object" && t !== null && typeof (t as ChallengeTest).expression === "string";
+}
 
 export function registerSandboxRoutes(app: FastifyInstance) {
   /**
@@ -55,14 +60,18 @@ export function registerSandboxRoutes(app: FastifyInstance) {
       const session = sessionRow.rows[0];
       if (!session) return reply.code(404).send({ message: "Session not found." });
 
-      const tests = (session.tests as Array<{ input?: string; expected?: string }>).map((t) => ({
-        input: t.input ?? "",
-        expected: t.expected ?? "",
-      }));
+      const rawTests = Array.isArray(session.tests) ? session.tests : [];
+      const expressionTests = rawTests.filter(isExpressionTest);
 
       let results;
-      if (tests.length > 0) {
-        results = await runTests(session.language, session.editor_content, tests);
+      if (expressionTests.length > 0) {
+        results = await runChallengeTests(session.language, session.editor_content, expressionTests);
+      } else if (rawTests.length > 0) {
+        const legacyTests = (rawTests as Array<{ input?: string; expected?: string }>).map((t) => ({
+          input: t.input ?? "",
+          expected: t.expected ?? "",
+        }));
+        results = await runTests(session.language, session.editor_content, legacyTests);
       } else {
         const single = await runCode(session.language, session.editor_content, request.body.stdin ?? "");
         results = [

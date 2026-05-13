@@ -12,6 +12,10 @@ export const config = {
   redisUrl: process.env.REDIS_URL ?? "",
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
   ollamaModel: process.env.OLLAMA_MODEL ?? "llama3.2",
+  ollamaModelReview:
+    process.env.OLLAMA_MODEL_REVIEW ?? process.env.OLLAMA_MODEL ?? "qwen3-coder:480b",
+  ollamaModelImposter:
+    process.env.OLLAMA_MODEL_IMPOSTER ?? process.env.OLLAMA_MODEL ?? "gpt-oss:120b",
   ollamaApiKey: process.env.OLLAMA_API_KEY ?? "",
   pistonBaseUrl: process.env.PISTON_BASE_URL ?? "https://emkc.org/api/v2/piston",
   aiRateLimitPerMinute: Number(process.env.AI_RATE_LIMIT_PER_MINUTE ?? 5),

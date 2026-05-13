@@ -4,6 +4,14 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import { config } from "./config.js";
 import { createId, initDatabase, inTransaction, pool, query } from "./db.js";
+import { chatRateLimit } from "./services/rate-limit.js";
+import { loadSessionRole, RoleViolation } from "./services/auth-guard.js";
+import { recordGameResult } from "./services/scoring.js";
+import { setCursor, clearCursor, getCursors } from "./services/presence.js";
+import { registerAiRoutes } from "./routes/ai-routes.js";
+import { registerSecurityRoutes } from "./routes/security-routes.js";
+import { registerSandboxRoutes } from "./routes/sandbox-routes.js";
+import { registerLeaderboardRoutes } from "./routes/leaderboard-routes.js";
 /* ────────────── Constants ────────────── */
 const COLOR_PALETTE = ["#14f59b", "#ffd95a", "#6da8ff", "#ff688b", "#ff9f43"];
 const PLAYER_TITLES = [
@@ -135,19 +143,14 @@ function applySabotage(code) {
     }
     return { mutatedCode: code, mutation: shuffled[0] };
 }
-/* ────────────── Chat rate limiter ────────────── */
-const chatRateMap = new Map();
-function checkChatRateLimit(playerId) {
-    const now = Date.now();
-    const timestamps = chatRateMap.get(playerId) ?? [];
-    const recent = timestamps.filter((t) => now - t < CHAT_RATE_LIMIT_WINDOW_MS);
-    if (recent.length >= CHAT_RATE_LIMIT_MAX) {
-        return false;
-    }
-    recent.push(now);
-    chatRateMap.set(playerId, recent);
-    return true;
+/* ────────────── Chat rate limiter (delegated to services/rate-limit) ────────────── */
+async function checkChatRateLimit(playerId) {
+    const result = await chatRateLimit(playerId);
+    return result.allowed;
 }
+// Suppress unused-variable diagnostics for legacy local constants — kept for backwards reference.
+void CHAT_RATE_LIMIT_WINDOW_MS;
+void CHAT_RATE_LIMIT_MAX;
 /* ────────────── Server setup ────────────── */
 const app = Fastify({
     logger: true,
@@ -382,6 +385,13 @@ async function getSessionSnapshot(sessionId, playerId) {
             winnerTeam: session.winner_team,
             reason: session.end_reason,
         },
+        cursors: getCursors(session.id).map((c) => ({
+            playerId: c.playerId,
+            name: c.name,
+            color: c.color,
+            anchor: c.anchor,
+            head: c.head,
+        })),
     };
 }
 async function getSessionPlayerIdentity(sessionId, playerId) {
@@ -492,6 +502,8 @@ async function appendImposterMessage(sessionId, message) {
 }
 /* ────────────── Game logic ────────────── */
 async function finishGame(sessionId, winnerTeam, reason) {
+    const categoryResult = await query(`SELECT category_slug FROM sessions WHERE id = $1`, [sessionId]);
+    const categorySlug = categoryResult.rows[0]?.category_slug;
     const lobbyResult = await query(`
       SELECT l.code, s.lobby_id
       FROM sessions s
@@ -514,6 +526,15 @@ async function finishGame(sessionId, winnerTeam, reason) {
     if (lobby) {
         await query(`UPDATE lobbies SET status = 'finished' WHERE id = $1`, [lobby.lobby_id]);
         await publishLobby(lobby.code);
+    }
+    // Persist scoring + leaderboard impact. Best-effort: don't block game finish if the write fails.
+    if (categorySlug) {
+        try {
+            await recordGameResult({ sessionId, categorySlug, winnerTeam, reason });
+        }
+        catch (err) {
+            app.log.warn({ err, sessionId }, "scoring failed");
+        }
     }
     await publishSession(sessionId);
 }
@@ -630,6 +651,17 @@ app.get("/health", async () => ({ ok: true }));
 app.get("/api/categories", async () => {
     return getCategories();
 });
+/* ────────── Modular feature routes ────────── */
+registerAiRoutes(app);
+registerSecurityRoutes(app);
+registerSandboxRoutes(app);
+registerLeaderboardRoutes(app);
+app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof RoleViolation) {
+        return reply.code(403).send({ message: `Role violation: ${error.reason}` });
+    }
+    reply.send(error);
+});
 /* ────────── WebSocket: Lobby ────────── */
 app.get("/ws/lobbies/:code", { websocket: true }, async (socket, request) => {
     const code = request.params.code.toUpperCase();
@@ -646,6 +678,10 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
     const realtimeSocket = socket;
     realtimeSocket.playerId = request.query.playerId;
     registerSocket(sessionSubscribers, sessionId, realtimeSocket);
+    realtimeSocket.on("close", () => {
+        if (realtimeSocket.playerId)
+            clearCursor(sessionId, realtimeSocket.playerId);
+    });
     realtimeSocket.on("message", async (payload) => {
         try {
             const data = JSON.parse(payload?.toString() ?? "");
@@ -662,13 +698,15 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
             if (!sessionMeta || sessionMeta.phase === "game_over") {
                 return;
             }
-            const playerRoleResult = await query(`
-            SELECT role
-            FROM session_players
-            WHERE session_id = $1 AND player_id = $2
-          `, [sessionId, identity.player_id]);
-            const playerRole = playerRoleResult.rows[0]?.role;
-            if (!playerRole) {
+            const roleInfo = await loadSessionRole(sessionId, identity.player_id);
+            if (!roleInfo) {
+                return;
+            }
+            const playerRole = roleInfo.role;
+            // Hardened: ejected players cannot mutate game state via WS.
+            if (roleInfo.ejected &&
+                data.type !== "chat.send" &&
+                data.type !== "editor.cursor") {
                 return;
             }
             /* ── Chat ── */
@@ -677,7 +715,7 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
                 if (!nextMessage) {
                     return;
                 }
-                if (!checkChatRateLimit(identity.player_id)) {
+                if (!(await checkChatRateLimit(identity.player_id))) {
                     return;
                 }
                 await query(`
@@ -712,6 +750,26 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
               SET status = 'editing live code'
               WHERE session_id = $1 AND player_id = $2
             `, [sessionId, identity.player_id]);
+            }
+            /* ── Editor cursor presence ── */
+            if (data.type === "editor.cursor") {
+                if (sessionMeta.phase !== "playing") {
+                    return;
+                }
+                setCursor(sessionId, {
+                    playerId: identity.player_id,
+                    name: identity.user_name,
+                    color: identity.color,
+                    anchor: Math.max(0, Math.floor(Number(data.anchor) || 0)),
+                    head: Math.max(0, Math.floor(Number(data.head) || 0)),
+                    updatedAt: Date.now(),
+                });
+                // Broadcast cursors at high frequency without re-running getSessionSnapshot.
+                broadcast(sessionSubscribers, sessionId, {
+                    type: "session.cursors",
+                    payload: getCursors(sessionId),
+                });
+                return;
             }
             /* ── Category vote ── */
             if (data.type === "category.vote") {
@@ -868,6 +926,8 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
             `, [sessionId, identity.player_id]);
                 await appendSystemMessage(sessionId, `⚡ A sabotage wave just hit the code. Something changed...`);
                 await appendImposterMessage(sessionId, `Sabotage applied: ${mutation.description}.`);
+                await query(`INSERT INTO session_sabotage_log (id, session_id, player_id, mutation_name, description, poisoned)
+             VALUES ($1, $2, $3, $4, $5, FALSE)`, [createId(), sessionId, identity.player_id, mutation.name, mutation.description]);
                 app.log.info({ sessionId, mutation: mutation.name, description: mutation.description }, "Sabotage applied");
                 const remainingCharges = sessionMeta.sabotage_charges - 1;
                 if (remainingCharges <= 0) {
