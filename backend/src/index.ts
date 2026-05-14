@@ -392,12 +392,14 @@ async function getSessionSnapshot(sessionId: string, playerId?: string) {
     meeting_snippet: string;
     winner_team: "civilian" | "imposter" | null;
     end_reason: string | null;
+    imposter_task_progress: number[];
   }>(
     `
       SELECT
         id, challenge_id, category_slug, phase, round, max_rounds,
         sabotage_charges, time_remaining_seconds, editor_content,
-        meeting_started_by, meeting_snippet, winner_team, end_reason
+        meeting_started_by, meeting_snippet, winner_team, end_reason,
+        imposter_task_progress
       FROM sessions
       WHERE id = $1
     `,
@@ -409,7 +411,7 @@ async function getSessionSnapshot(sessionId: string, playerId?: string) {
     return null;
   }
 
-  const [playersResult, categories, challengeResult, chatMessagesResult, imposterMessagesResult, categoryVotesResult, meetingVotesResult] = await Promise.all([
+  const [playersResult, categories, challengeResult, chatMessagesResult, imposterMessagesResult, categoryVotesResult, meetingVotesResult, latestTestRunResult] = await Promise.all([
     query<{
       id: string;
       name: string;
@@ -471,6 +473,16 @@ async function getSessionSnapshot(sessionId: string, playerId?: string) {
       `,
       [session.id],
     ),
+    query<{ results: unknown }>(
+      `
+        SELECT results
+        FROM session_test_runs
+        WHERE session_id = $1 AND player_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      [session.id, playerId ?? ""],
+    ),
   ]);
 
   const challenge = challengeResult.rows[0];
@@ -495,6 +507,35 @@ async function getSessionSnapshot(sessionId: string, playerId?: string) {
       (meetingVoteCount.get(vote.target_player_id) ?? 0) + 1,
     );
   }
+
+  const latestResults = (() => {
+    const raw = latestTestRunResult.rows[0]?.results;
+    if (!Array.isArray(raw)) return [];
+    return raw as Array<{ passed?: boolean }>;
+  })();
+
+  const civilianObjectives = (challenge.objectives as Array<{ title: string; description: string }>).map(
+    (objective, index) => ({
+      ...objective,
+      done: latestResults[index]?.passed === true,
+    }),
+  );
+
+  const imposterTaskProgress = Array.isArray(session.imposter_task_progress)
+    ? session.imposter_task_progress
+    : [];
+  const imposterObjectives = (
+    challenge.imposter_objectives as Array<{
+      title: string;
+      description: string;
+      lineHint?: number;
+    }>
+  ).map((objective, index) => ({
+    title: objective.title,
+    description: objective.description,
+    lineHint: objective.lineHint,
+    done: imposterTaskProgress.includes(index),
+  }));
 
   return {
     phase: session.phase,
@@ -526,8 +567,8 @@ async function getSessionSnapshot(sessionId: string, playerId?: string) {
       ...player,
       meetingVotes: meetingVoteCount.get(player.id) ?? 0,
     })),
-    objectives: challenge.objectives,
-    imposterObjectives: challenge.imposter_objectives,
+    objectives: civilianObjectives,
+    imposterObjectives: imposterObjectives,
     chatMessages: chatMessagesResult.rows.map((message) => ({
       user: message.user_name,
       color: message.color,
