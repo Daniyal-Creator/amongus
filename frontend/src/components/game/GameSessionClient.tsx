@@ -202,7 +202,9 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const isCivilian = snapshot.currentUser.role === "civilian";
   const roleLabel = isCivilian ? "CIVILIAN" : "IMPOSTER";
   const sideTitle = isCivilian ? "Test Cases" : "Sabotage Tasks";
-  const sideCount = isCivilian ? `(${snapshot.objectives.filter(o => o.done).length}/${snapshot.objectives.length})` : `(${snapshot.sabotageCharges}/5)`;
+  const sideCount = isCivilian
+    ? `(${snapshot.objectives.filter(o => o.done).length}/${snapshot.objectives.length})`
+    : `(${snapshot.imposterObjectives.filter(o => o.done).length}/${snapshot.imposterObjectives.length})`;
   const sidebarItems = isCivilian ? snapshot.objectives : snapshot.imposterObjectives;
   const editorHeaderTone = isCivilian ? "pixel-chip-orange" : "pixel-chip-red";
   const rightPanelTitle = isCivilian ? "Chat" : "Covert Feed + Chat";
@@ -225,14 +227,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   function handlePrimaryAction() {
     if (isCivilian) {
       sendRealtimeMessage({ type: "meeting.start" });
-      return;
     }
-
-    if (snapshot!.sabotageCharges <= 0) {
-      return;
-    }
-
-    sendRealtimeMessage({ type: "sabotage.use" });
+    // Imposter has no primary action; sabotage flows through RUN CODE in SandboxPanel.
   }
 
   return (
@@ -321,7 +317,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                 <p className="pixel-small mt-4 text-white/60">
                   {isCivilian
                     ? "Call emergency meeting if you see something sus."
-                    : `${snapshot.sabotageCharges} charges left. Use wisely.`}
+                    : `${snapshot.sabotageCharges} charges left. Edit the code and click VALIDATE BUG.`}
                 </p>
               </div>
 
