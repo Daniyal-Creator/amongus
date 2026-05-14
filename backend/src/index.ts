@@ -12,6 +12,7 @@ import { registerAiRoutes } from "./routes/ai-routes.js";
 import { registerSecurityRoutes } from "./routes/security-routes.js";
 import { registerSandboxRoutes } from "./routes/sandbox-routes.js";
 import { registerLeaderboardRoutes } from "./routes/leaderboard-routes.js";
+import { appendSystemMessage, appendImposterMessage } from "./services/session-effects.js";
 
 /* ────────────── Constants ────────────── */
 
@@ -681,7 +682,7 @@ async function publishLobby(code: string) {
   });
 }
 
-async function publishSession(sessionId: string) {
+export async function publishSession(sessionId: string) {
   const subscribers = sessionSubscribers.get(sessionId);
   if (!subscribers || subscribers.size === 0) {
     return;
@@ -707,29 +708,9 @@ async function publishSession(sessionId: string) {
   }
 }
 
-async function appendSystemMessage(sessionId: string, message: string) {
-  await query(
-    `
-      INSERT INTO session_chat_messages (id, session_id, player_id, user_name, color, message)
-      VALUES ($1, $2, NULL, 'system', '#f0a92e', $3)
-    `,
-    [createId(), sessionId, message],
-  );
-}
-
-async function appendImposterMessage(sessionId: string, message: string) {
-  await query(
-    `
-      INSERT INTO session_imposter_messages (id, session_id, user_name, color, message)
-      VALUES ($1, $2, 'ghost.ai', '#ff688b', $3)
-    `,
-    [createId(), sessionId, message],
-  );
-}
-
 /* ────────────── Game logic ────────────── */
 
-async function finishGame(
+export async function finishGame(
   sessionId: string,
   winnerTeam: "civilian" | "imposter",
   reason: string,

@@ -4,17 +4,31 @@ import { loadSessionRole } from "../services/auth-guard.js";
 import { runChallengeTests, runTests, runCode } from "../services/sandbox.js";
 import type { ChallengeTest } from "../services/sandbox.js";
 import { rateLimit } from "../services/rate-limit.js";
+import {
+  validateImposterTasks,
+  type ImposterTaskDef,
+} from "../services/sabotage-validator.js";
+import {
+  appendImposterMessage,
+  appendSystemMessage,
+} from "../services/session-effects.js";
+import { finishGame, publishSession } from "../index.js";
 
 function isExpressionTest(t: unknown): t is ChallengeTest {
   return typeof t === "object" && t !== null && typeof (t as ChallengeTest).expression === "string";
 }
 
+function isImposterTaskDef(t: unknown): t is ImposterTaskDef {
+  return (
+    typeof t === "object" &&
+    t !== null &&
+    typeof (t as ImposterTaskDef).expectedPattern === "string" &&
+    typeof (t as ImposterTaskDef).hint === "string" &&
+    typeof (t as ImposterTaskDef).lineHint === "number"
+  );
+}
+
 export function registerSandboxRoutes(app: FastifyInstance) {
-  /**
-   * POST /api/sessions/:sessionId/execute
-   * Runs the current editor content against the challenge's tests in a sandbox.
-   * Rate-limited per player (5/min) to protect the public Piston endpoint.
-   */
   app.post<{
     Params: { sessionId: string };
     Body: { playerId: string; stdin?: string };
@@ -48,9 +62,14 @@ export function registerSandboxRoutes(app: FastifyInstance) {
         editor_content: string;
         language: string;
         tests: unknown[];
+        imposter_objectives: unknown[];
+        sabotage_charges: number;
+        imposter_task_progress: number[];
+        phase: string;
       }>(
         `
-          SELECT s.editor_content, c.language, c.tests
+          SELECT s.editor_content, c.language, c.tests, c.imposter_objectives,
+                 s.sabotage_charges, s.imposter_task_progress, s.phase
           FROM sessions s
           JOIN challenges c ON c.id = s.challenge_id
           WHERE s.id = $1
@@ -60,6 +79,71 @@ export function registerSandboxRoutes(app: FastifyInstance) {
       const session = sessionRow.rows[0];
       if (!session) return reply.code(404).send({ message: "Session not found." });
 
+      /* ── Imposter path ── */
+      if (info.role === "imposter") {
+        const rawTasks = Array.isArray(session.imposter_objectives) ? session.imposter_objectives : [];
+        const tasks = rawTasks.filter(isImposterTaskDef);
+        if (tasks.length === 0) {
+          return reply.code(500).send({ message: "Challenge has no imposter tasks configured." });
+        }
+
+        const previouslyCompleted = Array.isArray(session.imposter_task_progress)
+          ? session.imposter_task_progress.filter((n: unknown): n is number => typeof n === "number")
+          : [];
+
+        const validation = validateImposterTasks(session.editor_content, tasks, previouslyCompleted);
+
+        let nextCharges = session.sabotage_charges;
+        if (validation.newlyCompleted.length > 0 && session.phase === "playing") {
+          const nextProgress = [...previouslyCompleted, ...validation.newlyCompleted].sort((a, b) => a - b);
+          nextCharges = Math.max(0, session.sabotage_charges - validation.newlyCompleted.length);
+
+          await query(
+            `
+              UPDATE sessions
+              SET imposter_task_progress = $2::jsonb,
+                  sabotage_charges = $3
+              WHERE id = $1
+            `,
+            [sessionId, JSON.stringify(nextProgress), nextCharges],
+          );
+
+          for (const idx of validation.newlyCompleted) {
+            const task = tasks[idx];
+            await query(
+              `INSERT INTO session_sabotage_log (id, session_id, player_id, mutation_name, description, poisoned)
+               VALUES ($1, $2, $3, $4, $5, FALSE)`,
+              [createId(), sessionId, playerId, `task_${idx}`, task.title],
+            );
+            await appendImposterMessage(sessionId, `Sabotage validated: ${task.title}.`);
+          }
+          await appendSystemMessage(
+            sessionId,
+            `⚡ Code mutation detected (${validation.newlyCompleted.length} new).`,
+          );
+
+          if (nextCharges <= 0) {
+            await finishGame(
+              sessionId,
+              "imposter",
+              "Imposter completed all sabotage tasks before civilians could stop them. 🔪",
+            );
+          } else {
+            await publishSession(sessionId);
+          }
+        }
+
+        const completed = validation.tasks.filter((t) => t.done).length;
+        return {
+          mode: "imposter" as const,
+          completed,
+          total: tasks.length,
+          charges: nextCharges,
+          tasks: validation.tasks,
+        };
+      }
+
+      /* ── Civilian path ── */
       const rawTests = Array.isArray(session.tests) ? session.tests : [];
       const expressionTests = rawTests.filter(isExpressionTest);
 
@@ -92,7 +176,11 @@ export function registerSandboxRoutes(app: FastifyInstance) {
         [createId(), sessionId, playerId, passed, results.length, JSON.stringify(results)],
       );
 
+      // Publish so other players see updated done flags via snapshot.
+      await publishSession(sessionId);
+
       return {
+        mode: "civilian" as const,
         passed,
         total: results.length,
         results,
