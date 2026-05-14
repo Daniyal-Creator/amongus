@@ -27,23 +27,29 @@ describe("SandboxPanel", () => {
   it("renders description and action buttons", () => {
     render(<SandboxPanel {...baseProps} />);
     expect(screen.getByText("Fix the bug in the code.")).toBeInTheDocument();
-    expect(screen.getByText("▶ RUN CODE")).toBeInTheDocument();
-    expect(screen.getByText("△ EMERGENCY")).toBeInTheDocument();
+    expect(screen.getByText("RUN CODE")).toBeInTheDocument();
+    expect(screen.getByText("EMERGENCY")).toBeInTheDocument();
   });
 
-  it("shows SABOTAGE button for imposters", () => {
+  it("does not render SABOTAGE button for imposters", () => {
     render(<SandboxPanel {...baseProps} isCivilian={false} />);
-    expect(screen.getByText("⚠ SABOTAGE")).toBeInTheDocument();
+    expect(screen.queryByText(/SABOTAGE/i)).not.toBeInTheDocument();
   });
 
-  it("disables buttons when phase is not playing", () => {
+  it("shows VALIDATE BUG label for imposters", () => {
+    render(<SandboxPanel {...baseProps} isCivilian={false} />);
+    expect(screen.getByText("VALIDATE BUG")).toBeInTheDocument();
+    expect(screen.getByText(/charges left/)).toBeInTheDocument();
+  });
+
+  it("disables run button when phase is not playing", () => {
     render(<SandboxPanel {...baseProps} phase="meeting" />);
-    const runButton = screen.getByText("▶ RUN CODE");
-    expect(runButton).toBeDisabled();
+    expect(screen.getByRole("button", { name: /RUN CODE/ })).toBeDisabled();
   });
 
-  it("calls executeSandbox on RUN CODE click and displays results", async () => {
+  it("calls executeSandbox on RUN CODE click and displays civilian results", async () => {
     mockExecute.mockResolvedValue({
+      mode: "civilian" as const,
       passed: 1,
       total: 2,
       results: [
@@ -53,7 +59,7 @@ describe("SandboxPanel", () => {
     });
 
     render(<SandboxPanel {...baseProps} />);
-    fireEvent.click(screen.getByText("▶ RUN CODE"));
+    fireEvent.click(screen.getByRole("button", { name: /RUN CODE/ }));
 
     await waitFor(() => {
       expect(screen.getByText("1/2 PASSED")).toBeInTheDocument();
@@ -63,11 +69,36 @@ describe("SandboxPanel", () => {
     expect(screen.getByText("FAIL")).toBeInTheDocument();
   });
 
+  it("renders imposter task results when mode is imposter", async () => {
+    mockExecute.mockResolvedValue({
+      mode: "imposter" as const,
+      completed: 1,
+      total: 2,
+      charges: 4,
+      tasks: [
+        { index: 0, title: "Reverse increment direction", lineHint: 7, done: true },
+        { index: 1, title: "Komentari history append", lineHint: 8, done: false, hint: "Tambahkan # di line 8" },
+      ],
+    });
+
+    render(<SandboxPanel {...baseProps} isCivilian={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /VALIDATE BUG/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("1/2 VALIDATED")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Reverse increment direction")).toBeInTheDocument();
+    expect(screen.getByText("Komentari history append")).toBeInTheDocument();
+    expect(screen.getByText(/Tambahkan # di line 8/)).toBeInTheDocument();
+    expect(screen.getByText(/Line 8/)).toBeInTheDocument();
+  });
+
   it("shows error message on failure", async () => {
     mockExecute.mockRejectedValue(new Error("Rate limit exceeded."));
 
     render(<SandboxPanel {...baseProps} />);
-    fireEvent.click(screen.getByText("▶ RUN CODE"));
+    fireEvent.click(screen.getByRole("button", { name: /RUN CODE/ }));
 
     await waitFor(() => {
       expect(screen.getByText("Rate limit exceeded.")).toBeInTheDocument();
@@ -78,15 +109,20 @@ describe("SandboxPanel", () => {
 
   it("calls onPrimaryAction when emergency button clicked", () => {
     render(<SandboxPanel {...baseProps} />);
-    fireEvent.click(screen.getByText("△ EMERGENCY"));
+    fireEvent.click(screen.getByRole("button", { name: /EMERGENCY/ }));
     expect(baseProps.onPrimaryAction).toHaveBeenCalledTimes(1);
   });
 
   it("clears results on Clear click", async () => {
-    mockExecute.mockResolvedValue({ passed: 1, total: 1, results: [{ passed: true, input: "", expected: "", actual: "" }] });
+    mockExecute.mockResolvedValue({
+      mode: "civilian" as const,
+      passed: 1,
+      total: 1,
+      results: [{ passed: true, input: "", expected: "", actual: "" }],
+    });
 
     render(<SandboxPanel {...baseProps} />);
-    fireEvent.click(screen.getByText("▶ RUN CODE"));
+    fireEvent.click(screen.getByRole("button", { name: /RUN CODE/ }));
 
     await waitFor(() => {
       expect(screen.getByText("1/1 PASSED")).toBeInTheDocument();

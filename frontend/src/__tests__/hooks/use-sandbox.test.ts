@@ -23,6 +23,7 @@ describe("useSandbox", () => {
 
   it("sets loading while executing and returns results on success", async () => {
     const mockResponse = {
+      mode: "civilian" as const,
       passed: 2,
       total: 3,
       results: [
@@ -46,7 +47,7 @@ describe("useSandbox", () => {
   });
 
   it("passes stdin to executeSandbox", async () => {
-    mockExecute.mockResolvedValue({ passed: 0, total: 0, results: [] });
+    mockExecute.mockResolvedValue({ mode: "civilian" as const, passed: 0, total: 0, results: [] });
 
     const { result } = renderHook(() => useSandbox("session-1", "player-1"));
 
@@ -72,7 +73,7 @@ describe("useSandbox", () => {
   });
 
   it("resets results and error", async () => {
-    mockExecute.mockResolvedValue({ passed: 1, total: 1, results: [] });
+    mockExecute.mockResolvedValue({ mode: "civilian" as const, passed: 1, total: 1, results: [] });
 
     const { result } = renderHook(() => useSandbox("session-1", "player-1"));
 
@@ -88,5 +89,27 @@ describe("useSandbox", () => {
 
     expect(result.current.results).toBeNull();
     expect(result.current.error).toBeNull();
+  });
+
+  it("stores imposter validation response when mode is imposter", async () => {
+    const mockResponse = {
+      mode: "imposter" as const,
+      completed: 1,
+      total: 5,
+      charges: 4,
+      tasks: [
+        { index: 0, title: "Reverse increment direction", lineHint: 7, done: true },
+        { index: 1, title: "Komentari history append", lineHint: 8, done: false, hint: "Tambahkan #" },
+      ],
+    };
+    mockExecute.mockResolvedValue(mockResponse);
+
+    const { result } = renderHook(() => useSandbox("session-1", "player-1"));
+
+    await act(async () => {
+      await result.current.execute();
+    });
+
+    expect(result.current.results).toEqual(mockResponse);
   });
 });

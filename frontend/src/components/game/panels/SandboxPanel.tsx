@@ -1,8 +1,8 @@
 "use client";
 
 import { useSandbox } from "@/hooks/use-sandbox";
-import type { GameSnapshot } from "@/types";
-import { Play, TriangleAlert, Bomb } from "lucide-react";
+import type { GameSnapshot, SandboxRunResponse } from "@/types";
+import { Play, TriangleAlert } from "lucide-react";
 
 type SandboxPanelProps = {
   sessionId: string;
@@ -13,6 +13,12 @@ type SandboxPanelProps = {
   sabotageCharges: number;
   onPrimaryAction: () => void;
 };
+
+function isImposterResponse(
+  response: SandboxRunResponse,
+): response is Extract<SandboxRunResponse, { mode: "imposter" }> {
+  return response.mode === "imposter";
+}
 
 export function SandboxPanel({
   sessionId,
@@ -26,9 +32,6 @@ export function SandboxPanel({
   const { results, loading, error, execute, reset } = useSandbox(sessionId, playerId);
 
   const actionDisabled = phase !== "playing";
-  const primaryActionClass = isCivilian
-    ? "pixel-button pixel-button-emergency"
-    : "pixel-button pixel-button-danger";
 
   return (
     <div className="border-t-4 border-[color:var(--brown)]">
@@ -45,21 +48,30 @@ export function SandboxPanel({
           >
             {loading ? "Running..." : (
               <span className="flex items-center gap-2">
-                <Play className="w-4 h-4 fill-current" /> RUN CODE
+                <Play className="w-4 h-4 fill-current" />
+                {isCivilian ? "RUN CODE" : "VALIDATE BUG"}
               </span>
             )}
           </button>
-          <button
-            type="button"
-            onClick={onPrimaryAction}
-            disabled={actionDisabled || (!isCivilian && sabotageCharges <= 0)}
-            className={`${primaryActionClass} shrink-0 ${actionDisabled ? "opacity-60" : ""} ${isCivilian && !actionDisabled ? "animate-emergency-pulse" : ""}`}
-          >
-            <span className="flex items-center gap-2">
-              {isCivilian ? <TriangleAlert className="w-4 h-4 fill-current" /> : <Bomb className="w-4 h-4" />}
-              {isCivilian ? "EMERGENCY" : "SABOTAGE"}
+          {isCivilian ? (
+            <button
+              type="button"
+              onClick={onPrimaryAction}
+              disabled={actionDisabled}
+              className={`pixel-button pixel-button-emergency shrink-0 ${
+                actionDisabled ? "opacity-60" : "animate-emergency-pulse"
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <TriangleAlert className="w-4 h-4 fill-current" />
+                EMERGENCY
+              </span>
+            </button>
+          ) : (
+            <span className="pixel-small text-[#5c4427] shrink-0">
+              {sabotageCharges} charges left
             </span>
-          </button>
+          )}
         </div>
       </div>
 
@@ -81,22 +93,67 @@ export function SandboxPanel({
           <div className="pixel-progress pixel-progress-indeterminate">
             <div className="pixel-progress-bar" />
           </div>
-          <p className="pixel-small text-[#5c4427] mt-2">Executing tests...</p>
+          <p className="pixel-small text-[#5c4427] mt-2">
+            {isCivilian ? "Executing tests..." : "Validating sabotage..."}
+          </p>
         </div>
       ) : null}
 
-      {results ? (
+      {results && isImposterResponse(results) ? (
         <div className="bg-[#fff8ea] border-t-3 border-[var(--brown)] px-4 py-3">
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span
-                className={`pixel-badge ${
-                  results.passed === results.total ? "pixel-badge-success" : "pixel-badge-danger"
+            <span
+              className={`pixel-badge ${
+                results.completed === results.total ? "pixel-badge-success" : "pixel-badge-danger"
+              }`}
+            >
+              {results.completed}/{results.total} VALIDATED
+            </span>
+            <button
+              type="button"
+              onClick={reset}
+              className="pixel-small text-[#5c4427] underline cursor-pointer"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {results.tasks.map((task) => (
+              <div
+                key={task.index}
+                className={`pixel-panel-result px-3 py-2 ${
+                  task.done
+                    ? "border-l-4 border-l-[var(--status-success-border)]"
+                    : "border-l-4 border-l-[var(--status-error-border)]"
                 }`}
               >
-                {results.passed}/{results.total} PASSED
-              </span>
-            </div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`pixel-badge ${task.done ? "pixel-badge-success" : "pixel-badge-danger"}`}>
+                    {task.done ? "PASS" : "FAIL"}
+                  </span>
+                  <span className="pixel-small text-[#5c4427]">{task.title}</span>
+                </div>
+                <p className="pixel-small text-[#5c4427]">Line {task.lineHint}</p>
+                {task.hint ? (
+                  <p className="pixel-small text-[#9f2c27] mt-1">{task.hint}</p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {results && !isImposterResponse(results) ? (
+        <div className="bg-[#fff8ea] border-t-3 border-[var(--brown)] px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <span
+              className={`pixel-badge ${
+                results.passed === results.total ? "pixel-badge-success" : "pixel-badge-danger"
+              }`}
+            >
+              {results.passed}/{results.total} PASSED
+            </span>
             <button
               type="button"
               onClick={reset}
@@ -111,7 +168,9 @@ export function SandboxPanel({
               <div
                 key={idx}
                 className={`pixel-panel-result px-3 py-2 ${
-                  test.passed ? "border-l-4 border-l-[var(--status-success-border)]" : "border-l-4 border-l-[var(--status-error-border)]"
+                  test.passed
+                    ? "border-l-4 border-l-[var(--status-success-border)]"
+                    : "border-l-4 border-l-[var(--status-error-border)]"
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">
