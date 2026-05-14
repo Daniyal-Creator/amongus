@@ -12,7 +12,7 @@ import { registerAiRoutes } from "./routes/ai-routes.js";
 import { registerSecurityRoutes } from "./routes/security-routes.js";
 import { registerSandboxRoutes } from "./routes/sandbox-routes.js";
 import { registerLeaderboardRoutes } from "./routes/leaderboard-routes.js";
-import { appendSystemMessage, appendImposterMessage } from "./services/session-effects.js";
+import { appendSystemMessage } from "./services/session-effects.js";
 
 /* ────────────── Constants ────────────── */
 
@@ -29,134 +29,6 @@ const ROUND_DURATION_SECONDS = 120;
 const CATEGORY_VOTE_DURATION_SECONDS = 10;
 const CHAT_RATE_LIMIT_WINDOW_MS = 10_000;
 const CHAT_RATE_LIMIT_MAX = 10;
-
-/* ────────────── Sabotage mutations ────────────── */
-
-const SABOTAGE_MUTATIONS: Array<{
-  name: string;
-  description: string;
-  apply: (code: string) => string;
-}> = [
-  {
-    name: "strict_to_loose",
-    description: "Changed === to == (strict → loose equality)",
-    apply: (code) => code.replace(/===/, "=="),
-  },
-  {
-    name: "loose_to_strict",
-    description: "Changed == to === (loose → strict equality)",
-    apply: (code) => code.replace(/([^!=<>])={2}([^=])/, "$1===$2"),
-  },
-  {
-    name: "less_to_leq",
-    description: "Changed < to <= (off-by-one in loop)",
-    apply: (code) => {
-      const match = code.match(/(\w+)\s*<\s*(\w+)\.(length|size|count)/);
-      if (match) {
-        return code.replace(match[0], match[0].replace("<", "<="));
-      }
-      return code.replace(/([^<])< /, "$1<= ");
-    },
-  },
-  {
-    name: "greater_to_geq",
-    description: "Changed > to >= (boundary condition shift)",
-    apply: (code) => {
-      const match = code.match(/([^>])> /);
-      if (match) {
-        return code.replace(match[0], match[0].replace("> ", ">= "));
-      }
-      return code;
-    },
-  },
-  {
-    name: "plus_to_minus",
-    description: "Changed += to -= (accumulator direction reversed)",
-    apply: (code) => {
-      const lines = code.split("\n");
-      for (let i = lines.length - 1; i >= 0; i--) {
-        if (lines[i].includes("+=") && !lines[i].includes("self.length") && !lines[i].includes("size")) {
-          lines[i] = lines[i].replace("+=", "-=");
-          break;
-        }
-      }
-      return lines.join("\n");
-    },
-  },
-  {
-    name: "swap_return",
-    description: "Changed return value to return None/null",
-    apply: (code) => {
-      const lines = code.split("\n");
-      for (let i = lines.length - 1; i >= 0; i--) {
-        if (/return\s+\w/.test(lines[i]) && !lines[i].includes("return None") && !lines[i].includes("return null") && !lines[i].includes("return False")) {
-          if (code.includes("def ")) {
-            lines[i] = lines[i].replace(/return\s+.+/, "return None");
-          } else {
-            lines[i] = lines[i].replace(/return\s+.+/, "return null;");
-          }
-          break;
-        }
-      }
-      return lines.join("\n");
-    },
-  },
-  {
-    name: "swap_increment",
-    description: "Changed i++ to i-- (loop direction reversed)",
-    apply: (code) => {
-      const lines = code.split("\n");
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].includes("++") && lines[i].includes("i") && !lines[i].includes("//")) {
-          lines[i] = lines[i].replace("++", "--");
-          break;
-        }
-      }
-      return lines.join("\n");
-    },
-  },
-  {
-    name: "comment_out_line",
-    description: "Commented out a critical line",
-    apply: (code) => {
-      const lines = code.split("\n");
-      const candidates = lines
-        .map((line, index) => ({ line: line.trim(), index }))
-        .filter((item) =>
-          item.line.length > 5 &&
-          !item.line.startsWith("//") &&
-          !item.line.startsWith("#") &&
-          !item.line.startsWith("class ") &&
-          !item.line.startsWith("def ") &&
-          !item.line.startsWith("function ") &&
-          !item.line.startsWith("export ") &&
-          !item.line.startsWith("{") &&
-          !item.line.startsWith("}") &&
-          (item.line.includes("return") || item.line.includes("self.") || item.line.includes("result") || item.line.includes("push")),
-        );
-      if (candidates.length > 0) {
-        const target = candidates[randomInt(0, candidates.length)];
-        const prefix = code.includes("def ") ? "# " : "// ";
-        const indent = lines[target.index].match(/^(\s*)/)?.[1] ?? "";
-        lines[target.index] = `${indent}${prefix}${lines[target.index].trim()}`;
-      }
-      return lines.join("\n");
-    },
-  },
-];
-
-function applySabotage(code: string): { mutatedCode: string; mutation: (typeof SABOTAGE_MUTATIONS)[number] } {
-  const shuffled = [...SABOTAGE_MUTATIONS].sort(() => Math.random() - 0.5);
-
-  for (const mutation of shuffled) {
-    const result = mutation.apply(code);
-    if (result !== code) {
-      return { mutatedCode: result, mutation };
-    }
-  }
-
-  return { mutatedCode: code, mutation: shuffled[0] };
-}
 
 /* ────────────── Chat rate limiter (delegated to services/rate-limit) ────────────── */
 
@@ -1042,8 +914,7 @@ app.get<{
           | { type: "editor.cursor"; anchor: number; head: number }
           | { type: "category.vote"; categorySlug: string }
           | { type: "meeting.start" }
-          | { type: "meeting.vote"; targetPlayerId: string }
-          | { type: "sabotage.use" };
+          | { type: "meeting.vote"; targetPlayerId: string };
 
         const identity = await getSessionPlayerIdentity(sessionId, realtimeSocket.playerId);
         if (!identity) {
@@ -1072,7 +943,6 @@ app.get<{
         if (!roleInfo) {
           return;
         }
-        const playerRole = roleInfo.role;
         // Hardened: ejected players cannot mutate game state via WS.
         if (
           roleInfo.ejected &&
@@ -1362,66 +1232,6 @@ app.get<{
               );
               return;
             }
-          }
-        }
-
-        /* ── Sabotage ── */
-        if (data.type === "sabotage.use") {
-          if (sessionMeta.phase !== "playing" || playerRole !== "imposter") {
-            return;
-          }
-
-          if (sessionMeta.sabotage_charges <= 0) {
-            return;
-          }
-
-          // Get current editor content and apply sabotage mutation
-          const editorResult = await query<{ editor_content: string }>(
-            `SELECT editor_content FROM sessions WHERE id = $1`,
-            [sessionId],
-          );
-          const currentContent = editorResult.rows[0]?.editor_content ?? "";
-          const { mutatedCode, mutation } = applySabotage(currentContent);
-
-          await query(
-            `
-              UPDATE sessions
-              SET sabotage_charges = sabotage_charges - 1,
-                  editor_content = $2
-              WHERE id = $1
-            `,
-            [sessionId, mutatedCode],
-          );
-          await query(
-            `
-              UPDATE session_players
-              SET status = 'used sabotage charge'
-              WHERE session_id = $1 AND player_id = $2
-            `,
-            [sessionId, identity.player_id],
-          );
-          await appendSystemMessage(
-            sessionId,
-            `⚡ A sabotage wave just hit the code. Something changed...`,
-          );
-          await appendImposterMessage(sessionId, `Sabotage applied: ${mutation.description}.`);
-
-          await query(
-            `INSERT INTO session_sabotage_log (id, session_id, player_id, mutation_name, description, poisoned)
-             VALUES ($1, $2, $3, $4, $5, FALSE)`,
-            [createId(), sessionId, identity.player_id, mutation.name, mutation.description],
-          );
-
-          app.log.info({ sessionId, mutation: mutation.name, description: mutation.description }, "Sabotage applied");
-
-          const remainingCharges = sessionMeta.sabotage_charges - 1;
-          if (remainingCharges <= 0) {
-            await finishGame(
-              sessionId,
-              "imposter",
-              "Imposter exhausted all sabotage charges before civilians could stop them. 🔪",
-            );
-            return;
           }
         }
 
