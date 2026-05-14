@@ -90,7 +90,8 @@ export async function initDatabase() {
       winner_team TEXT,
       end_reason TEXT,
       ended_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      imposter_task_progress JSONB NOT NULL DEFAULT '[]'::jsonb
     );
 
     CREATE TABLE IF NOT EXISTS session_players (
@@ -210,6 +211,11 @@ export async function initDatabase() {
       results JSONB NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+
+  await query(`
+    ALTER TABLE sessions
+      ADD COLUMN IF NOT EXISTS imposter_task_progress JSONB NOT NULL DEFAULT '[]'::jsonb;
   `);
 
   for (const category of CATEGORY_SEEDS) {

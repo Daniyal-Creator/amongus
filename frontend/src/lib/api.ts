@@ -42,8 +42,7 @@ export type SessionRealtimeMessage =
   | { type: "editor.cursor"; anchor: number; head: number }
   | { type: "category.vote"; categorySlug: string }
   | { type: "meeting.start" }
-  | { type: "meeting.vote"; targetPlayerId: string }
-  | { type: "sabotage.use" };
+  | { type: "meeting.vote"; targetPlayerId: string };
 
 export type SessionRealtimePush =
   | { type: "session.updated"; payload: GameSnapshot | null }

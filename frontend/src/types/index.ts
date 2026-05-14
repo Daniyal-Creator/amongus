@@ -44,6 +44,7 @@ export type GameObjective = {
   title: string;
   description: string;
   done: boolean;
+  lineHint?: number;
 };
 
 export type ChatMessage = {
@@ -156,11 +157,30 @@ export type SandboxTestResult = {
   error?: string;
 };
 
-export type SandboxRunResponse = {
+export type CivilianRunResponse = {
+  mode: "civilian";
   passed: number;
   total: number;
   results: SandboxTestResult[];
 };
+
+export type ImposterTaskResult = {
+  index: number;
+  title: string;
+  lineHint: number;
+  done: boolean;
+  hint?: string;
+};
+
+export type ImposterValidationResponse = {
+  mode: "imposter";
+  completed: number;
+  total: number;
+  charges: number;
+  tasks: ImposterTaskResult[];
+};
+
+export type SandboxRunResponse = CivilianRunResponse | ImposterValidationResponse;
 
 export type AiSabotageSuggestResponse = {
   suggestion: string;
