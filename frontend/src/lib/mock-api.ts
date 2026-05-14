@@ -30,8 +30,14 @@ type SessionRealtimeMessage =
   | { type: "editor.cursor"; anchor: number; head: number }
   | { type: "category.vote"; categorySlug: string }
   | { type: "meeting.start" }
-  | { type: "meeting.vote"; targetPlayerId: string }
-  | { type: "sabotage.use" };
+  | { type: "meeting.vote"; targetPlayerId: string };
+
+type MockImposterTask = GameObjective & {
+  lineHint: number;
+  expectedPattern: string;
+  forbiddenPattern?: string;
+  hint: string;
+};
 
 type MockChallenge = {
   title: string;
@@ -40,7 +46,7 @@ type MockChallenge = {
   difficulty: string;
   tests: ChallengeTest[];
   objectives: GameObjective[];
-  imposterObjectives: GameObjective[];
+  imposterObjectives: MockImposterTask[];
   editorContent: string;
 };
 
@@ -72,6 +78,8 @@ type MockSessionRecord = {
   meetingSnippet: string;
   meetingVotes: Record<string, string>;
   result: GameSnapshot["result"];
+  imposterTaskProgress: number[];
+  lastTestResults: Array<{ passed: boolean; input: string; expected: string; actual: string; error?: string }>;
 };
 
 type MockStore = {
@@ -160,9 +168,49 @@ const CHALLENGES: Record<string, MockChallenge> = {
       { title: "Submit clean patch", description: "Jangan ubah public API class.", done: false },
     ],
     imposterObjectives: [
-      { title: "Poison one small fix", description: "Bikin bug terlihat seperti typo kecil.", done: false },
-      { title: "Blend into the chat", description: "Jangan terlalu cepat kelihatan sus.", done: false },
-      { title: "Spend sabotage carefully", description: "Simpan charge untuk momen tepat.", done: false },
+      {
+        title: "Reverse increment direction",
+        description: "Ubah `self.count += 1` jadi `self.count -= 1` di method `increment`.",
+        done: false,
+        lineHint: 7,
+        expectedPattern: "self\\.count\\s*-=\\s*1",
+        forbiddenPattern: "self\\.count\\s*\\+=\\s*1",
+        hint: "Cari `self.count += 1` di line 7, ganti `+=` jadi `-=`.",
+      },
+      {
+        title: "Komentari history append",
+        description: "Komentari baris `self.history.append(\"inc\")` di method `increment`.",
+        done: false,
+        lineHint: 8,
+        expectedPattern: "#\\s*self\\.history\\.append\\(\"inc\"\\)",
+        hint: "Tambahkan `# ` di depan `self.history.append(\"inc\")` di line 8.",
+      },
+      {
+        title: "Decrement extreme",
+        description: "Ubah `self.count -= 2` jadi `self.count -= 5` di `decrement`.",
+        done: false,
+        lineHint: 11,
+        expectedPattern: "self\\.count\\s*-=\\s*5",
+        forbiddenPattern: "self\\.count\\s*-=\\s*2",
+        hint: "Ubah angka `2` jadi `5` di line 11.",
+      },
+      {
+        title: "Reset jadi nilai aneh",
+        description: "Ubah `pass` di `reset` jadi `self.count = 999`.",
+        done: false,
+        lineHint: 15,
+        expectedPattern: "self\\.count\\s*=\\s*999",
+        forbiddenPattern: "def\\s+reset\\(self\\):\\s*\\n\\s*pass",
+        hint: "Ganti `pass` di line 15 jadi `self.count = 999`.",
+      },
+      {
+        title: "Geser hasil value",
+        description: "Ubah `len(self.history)` jadi `len(self.history) + 1`.",
+        done: false,
+        lineHint: 18,
+        expectedPattern: "len\\(self\\.history\\)\\s*\\+\\s*1",
+        hint: "Tambahkan `+ 1` di akhir return line 18.",
+      },
     ],
     editorContent: [
       "class Counter:",
@@ -201,9 +249,50 @@ const CHALLENGES: Record<string, MockChallenge> = {
       { title: "Show proper empty state", description: "UI harus kasih fallback yang benar.", done: false },
     ],
     imposterObjectives: [
-      { title: "Break one edge case", description: "Bikin fail saat query kosong.", done: false },
-      { title: "Hide behind frontend noise", description: "Alihkan fokus ke styling padahal bug logic.", done: false },
-      { title: "Keep the editor unstable", description: "Manfaatkan sabotage di area loop/filter.", done: false },
+      {
+        title: "Inversi guard kosong",
+        description: "Ubah `if (!query)` jadi `if (query)`.",
+        done: false,
+        lineHint: 2,
+        expectedPattern: "if\\s*\\(\\s*query\\s*\\)",
+        forbiddenPattern: "if\\s*\\(\\s*!\\s*query\\s*\\)",
+        hint: "Hapus `!` di line 2.",
+      },
+      {
+        title: "Return array kosong dipanggil dulu",
+        description: "Ubah `return [];` jadi `return items;` di guard.",
+        done: false,
+        lineHint: 3,
+        expectedPattern: "return\\s+items\\s*;",
+        forbiddenPattern: "return\\s+\\[\\s*\\]\\s*;",
+        hint: "Ubah `return [];` jadi `return items;` di line 3.",
+      },
+      {
+        title: "Filter selalu false",
+        description: "Ubah `item.includes(query)` jadi `false`.",
+        done: false,
+        lineHint: 6,
+        expectedPattern: "items\\.filter\\(\\(item\\)\\s*=>\\s*false\\)",
+        hint: "Ubah body filter di line 6 jadi `=> false`.",
+      },
+      {
+        title: "Inversi cek empty render",
+        description: "Ubah `items.length > 0` jadi `items.length === 0`.",
+        done: false,
+        lineHint: 10,
+        expectedPattern: "items\\.length\\s*===\\s*0",
+        forbiddenPattern: "items\\.length\\s*>\\s*0",
+        hint: "Ubah `> 0` jadi `=== 0` di line 10.",
+      },
+      {
+        title: "Tukar empty message",
+        description: "Tukar `'Showing results'` jadi `'Empty cart'`.",
+        done: false,
+        lineHint: 13,
+        expectedPattern: "['\"]Empty cart['\"]",
+        forbiddenPattern: "['\"]Showing results['\"]",
+        hint: "Ubah string `'Showing results'` jadi `'Empty cart'` di line 13.",
+      },
     ],
     editorContent: [
       "export function filterProducts(items, query) {",
@@ -239,9 +328,50 @@ const CHALLENGES: Record<string, MockChallenge> = {
       { title: "Avoid double-counting", description: "Sum tidak boleh bertambah salah.", done: false },
     ],
     imposterObjectives: [
-      { title: "Inject subtle boundary bug", description: "Rusak kondisi akhir loop.", done: false },
-      { title: "Push the wrong hint", description: "Arahkan tim ke inisialisasi yang bukan akar masalah.", done: false },
-      { title: "Protect your role", description: "Jangan terlalu aktif pas meeting.", done: false },
+      {
+        title: "Reverse guard sign",
+        description: "Ubah `k <= 0` jadi `k > 0` di guard.",
+        done: false,
+        lineHint: 2,
+        expectedPattern: "if\\s+k\\s*>\\s*0",
+        forbiddenPattern: "if\\s+k\\s*<=\\s*0",
+        hint: "Ubah `k <= 0` jadi `k > 0` di line 2.",
+      },
+      {
+        title: "Window awal jadi 0",
+        description: "Ubah `sum(nums[:k])` jadi `0`.",
+        done: false,
+        lineHint: 5,
+        expectedPattern: "window\\s*=\\s*0\\b",
+        forbiddenPattern: "window\\s*=\\s*sum\\(nums\\[:k\\]\\)",
+        hint: "Ubah `sum(nums[:k])` jadi `0` di line 5.",
+      },
+      {
+        title: "Best mulai dari -1",
+        description: "Ubah `best = window` jadi `best = -1`.",
+        done: false,
+        lineHint: 6,
+        expectedPattern: "best\\s*=\\s*-1",
+        forbiddenPattern: "best\\s*=\\s*window\\s*$",
+        hint: "Ubah `best = window` jadi `best = -1` di line 6.",
+      },
+      {
+        title: "Hapus update window add",
+        description: "Komentari `window += nums[right]`.",
+        done: false,
+        lineHint: 10,
+        expectedPattern: "#\\s*window\\s*\\+=\\s*nums\\[right\\]",
+        hint: "Tambahkan `# ` di depan `window += nums[right]` di line 10.",
+      },
+      {
+        title: "Pakai min, bukan max",
+        description: "Ubah `max(best, window)` jadi `min(best, window)`.",
+        done: false,
+        lineHint: 13,
+        expectedPattern: "min\\(best,\\s*window\\)",
+        forbiddenPattern: "max\\(best,\\s*window\\)",
+        hint: "Ubah `max` jadi `min` di line 13.",
+      },
     ],
     editorContent: [
       "def max_sum(nums, k):",
@@ -277,9 +407,51 @@ const CHALLENGES: Record<string, MockChallenge> = {
       { title: "Return stable output", description: "Hasil final tetap rapih untuk renderer.", done: false },
     ],
     imposterObjectives: [
-      { title: "Corrupt one branch", description: "Bikin interval non-overlap ikut merge.", done: false },
-      { title: "Stay quiet", description: "Jangan terlalu banyak chat pas logic sudah rusak.", done: false },
-      { title: "Use last sabotage wisely", description: "Simpan untuk close game.", done: false },
+      {
+        title: "Inversi guard kosong",
+        description: "Ubah `if (!intervals.length)` jadi `if (intervals.length)`.",
+        done: false,
+        lineHint: 2,
+        expectedPattern: "if\\s*\\(\\s*intervals\\.length\\s*\\)",
+        forbiddenPattern: "if\\s*\\(\\s*!\\s*intervals\\.length\\s*\\)",
+        hint: "Hapus `!` di line 2.",
+      },
+      {
+        title: "Sort by end (bukan start)",
+        description: "Tetap pakai `a[1] - b[1]` (sudah salah). Ubah jadi `b[0] - a[0]` (descending start).",
+        done: false,
+        lineHint: 6,
+        expectedPattern: "b\\[0\\]\\s*-\\s*a\\[0\\]",
+        forbiddenPattern: "a\\[1\\]\\s*-\\s*b\\[1\\]",
+        hint: "Ubah `a[1] - b[1]` jadi `b[0] - a[0]` di line 6.",
+      },
+      {
+        title: "Mulai merged kosong",
+        description: "Ubah `[sorted[0]]` jadi `[]`.",
+        done: false,
+        lineHint: 7,
+        expectedPattern: "const\\s+merged\\s*=\\s*\\[\\s*\\]",
+        forbiddenPattern: "const\\s+merged\\s*=\\s*\\[sorted\\[0\\]\\]",
+        hint: "Ubah `[sorted[0]]` jadi `[]` di line 7.",
+      },
+      {
+        title: "Off-by-one loop start",
+        description: "Ubah `let i = 1` jadi `let i = 0`.",
+        done: false,
+        lineHint: 9,
+        expectedPattern: "let\\s+i\\s*=\\s*0\\s*;",
+        forbiddenPattern: "let\\s+i\\s*=\\s*1\\s*;",
+        hint: "Ubah `i = 1` jadi `i = 0` di line 9.",
+      },
+      {
+        title: "Continue jadi break",
+        description: "Ubah `continue;` di branch overlap jadi `break;`.",
+        done: false,
+        lineHint: 15,
+        expectedPattern: "last\\[1\\]\\s*=\\s*current\\[1\\]\\s*;\\s*\\n\\s*break\\s*;",
+        forbiddenPattern: "last\\[1\\]\\s*=\\s*current\\[1\\]\\s*;\\s*\\n\\s*continue\\s*;",
+        hint: "Ubah `continue;` jadi `break;` di line 15 (setelah merge assignment).",
+      },
     ],
     editorContent: [
       "export function mergeIntervals(intervals) {",
@@ -487,8 +659,16 @@ function buildSessionSnapshot(session: MockSessionRecord, playerId?: string): Ga
       ...player,
       meetingVotes: meetingVoteCount[player.id] ?? 0,
     })),
-    objectives: clone(session.challenge.objectives),
-    imposterObjectives: clone(session.challenge.imposterObjectives),
+    objectives: session.challenge.objectives.map((objective, index) => ({
+      ...objective,
+      done: session.lastTestResults?.[index]?.passed === true,
+    })),
+    imposterObjectives: session.challenge.imposterObjectives.map((objective, index) => ({
+      title: objective.title,
+      description: objective.description,
+      lineHint: objective.lineHint,
+      done: session.imposterTaskProgress.includes(index),
+    })),
     chatMessages: clone(session.chatMessages),
     imposterFeed: clone(session.imposterFeed),
     editorContent: session.editorContent,
@@ -658,20 +838,45 @@ function resolveMeeting(session: MockSessionRecord, currentPlayerId: string) {
   session.phase = "playing";
 }
 
-function applySabotage(code: string): { code: string; description: string } {
-  if (code.includes("===")) {
-    return { code: code.replace("===", "=="), description: "Changed === to ==." };
+function evaluateMockImposterTasks(
+  editorContent: string,
+  tasks: MockImposterTask[],
+  previouslyCompleted: number[],
+) {
+  const completedSet = new Set(previouslyCompleted);
+  const taskResults: Array<{ index: number; title: string; lineHint: number; done: boolean; hint?: string }> = [];
+  const newlyCompleted: number[] = [];
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i];
+    if (completedSet.has(i)) {
+      taskResults.push({ index: i, title: task.title, lineHint: task.lineHint, done: true });
+      continue;
+    }
+    let done = false;
+    try {
+      const expected = new RegExp(task.expectedPattern);
+      if (expected.test(editorContent)) {
+        if (!task.forbiddenPattern || !new RegExp(task.forbiddenPattern).test(editorContent)) {
+          done = true;
+        }
+      }
+    } catch {
+      done = false;
+    }
+    if (done) {
+      newlyCompleted.push(i);
+      taskResults.push({ index: i, title: task.title, lineHint: task.lineHint, done: true });
+    } else {
+      taskResults.push({
+        index: i,
+        title: task.title,
+        lineHint: task.lineHint,
+        done: false,
+        hint: task.hint,
+      });
+    }
   }
-  if (code.includes("return []")) {
-    return { code: code.replace("return []", "return items"), description: "Changed an empty return into returning items." };
-  }
-  if (code.includes("len(nums) - 1")) {
-    return { code: code.replace("len(nums) - 1", "len(nums)"), description: "Shifted len(nums) - 1 to len(nums)." };
-  }
-  if (code.includes("last[1] = current[1]")) {
-    return { code: code.replace("last[1] = current[1]", "last[1] = last[0]"), description: "Changed interval merge assignment." };
-  }
-  return { code: code.replace("+=", "-="), description: "Changed += to -=." };
+  return { taskResults, newlyCompleted };
 }
 
 function createSessionFromLobby(store: MockStore, lobby: MockLobbyRecord): MockSessionRecord {
@@ -727,6 +932,8 @@ function createSessionFromLobby(store: MockStore, lobby: MockLobbyRecord): MockS
       winnerTeam: null,
       reason: null,
     },
+    imposterTaskProgress: [],
+    lastTestResults: [],
   };
 }
 
@@ -965,32 +1172,6 @@ export async function sendMockSessionMessage(
       resolveMeeting(session, currentPlayer.id);
     }
 
-    if (payload.type === "sabotage.use" && session.phase === "playing" && currentPlayer.role === "imposter") {
-      if (session.sabotageCharges <= 0) {
-        return;
-      }
-
-      session.sabotageCharges -= 1;
-      const sabotage = applySabotage(session.editorContent);
-      session.editorContent = sabotage.code;
-      currentPlayer.status = "used sabotage charge";
-      appendChat(session.imposterFeed, "ghost.ai", "#ff688b", `Sabotage applied: ${sabotage.description}`);
-      appendChat(
-        session.chatMessages,
-        "system",
-        "#f0a92e",
-        "A sabotage wave just hit the code. Something changed...",
-      );
-
-      if (session.sabotageCharges === 0) {
-        session.phase = "game_over";
-        session.result = {
-          winnerTeam: "imposter",
-          reason: "Imposter exhausted all sabotage charges before civilians could stop them.",
-        };
-      }
-    }
-
     notifySession(sessionId);
   });
 }
@@ -1028,22 +1209,75 @@ export async function requestMockSabotageSuggestion(
 }
 
 export async function executeMockSandbox(
-  _sessionId: string,
-  _playerId: string,
+  sessionId: string,
+  playerId: string,
 ): Promise<SandboxRunResponse> {
   await new Promise((resolve) => setTimeout(resolve, 800));
-  return {
-    passed: 1,
-    total: 1,
-    results: [
+
+  return withStore((store) => {
+    const session = store.sessions[sessionId];
+    if (!session) {
+      throw new Error("Session tidak ditemukan.");
+    }
+    const currentPlayer = session.players.find((player) => player.id === playerId) ?? session.players[0];
+
+    if (currentPlayer?.role === "imposter") {
+      const tasks = session.challenge.imposterObjectives;
+      const { taskResults, newlyCompleted } = evaluateMockImposterTasks(
+        session.editorContent,
+        tasks,
+        session.imposterTaskProgress,
+      );
+      if (newlyCompleted.length > 0 && session.phase === "playing") {
+        session.imposterTaskProgress = [...session.imposterTaskProgress, ...newlyCompleted].sort(
+          (a, b) => a - b,
+        );
+        session.sabotageCharges = Math.max(0, session.sabotageCharges - newlyCompleted.length);
+        for (const idx of newlyCompleted) {
+          appendChat(session.imposterFeed, "ghost.ai", "#ff688b", `Sabotage validated: ${tasks[idx].title}.`);
+        }
+        appendChat(
+          session.chatMessages,
+          "system",
+          "#f0a92e",
+          `Code mutation detected (${newlyCompleted.length} new).`,
+        );
+        if (session.sabotageCharges <= 0) {
+          session.phase = "game_over";
+          session.result = {
+            winnerTeam: "imposter",
+            reason: "Imposter completed all sabotage tasks.",
+          };
+        }
+        notifySession(sessionId);
+      }
+      return {
+        mode: "imposter" as const,
+        completed: taskResults.filter((t) => t.done).length,
+        total: tasks.length,
+        charges: session.sabotageCharges,
+        tasks: taskResults,
+      };
+    }
+
+    // Civilian: stub a single passing test and store as last results.
+    const results = [
       {
         passed: true,
         input: "[demo]",
         expected: "[demo output]",
         actual: "[demo output]",
       },
-    ],
-  };
+    ];
+    session.lastTestResults = results;
+    notifySession(sessionId);
+    return {
+      mode: "civilian" as const,
+      passed: 1,
+      total: 1,
+      results,
+    };
+  });
 }
 
 export async function runMockSecurityScan(
