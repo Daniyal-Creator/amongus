@@ -10,14 +10,16 @@ export function useSandbox(sessionId: string, playerId: string) {
   const [error, setError] = useState<string | null>(null);
 
   const execute = useCallback(
-    async (stdin?: string) => {
+    async (stdin?: string): Promise<SandboxRunResponse | null> => {
       setLoading(true);
       setError(null);
       try {
         const response = await executeSandbox(sessionId, playerId, stdin);
         setResults(response);
+        return response;
       } catch (err) {
         setError(err instanceof Error ? err.message : "Gagal menjalankan kode.");
+        return null;
       } finally {
         setLoading(false);
       }

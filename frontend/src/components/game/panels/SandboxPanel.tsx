@@ -1,6 +1,7 @@
 "use client";
 
 import { useSandbox } from "@/hooks/use-sandbox";
+import { useSounds } from "@/lib/sound-provider";
 import type { GameSnapshot, SandboxRunResponse } from "@/types";
 import { Play, TriangleAlert } from "lucide-react";
 
@@ -30,8 +31,24 @@ export function SandboxPanel({
   onPrimaryAction,
 }: SandboxPanelProps) {
   const { results, loading, error, execute, reset } = useSandbox(sessionId, playerId);
+  const { play: playSound } = useSounds();
 
   const actionDisabled = phase !== "playing";
+
+  async function handleExecute() {
+    const response = await execute();
+    if (!response) return; // network error — already shown in error state
+
+    if (isImposterResponse(response)) {
+      // Imposter: success = all sabotage tasks validated
+      const allDone = response.completed === response.total;
+      playSound(allDone ? "success" : "fail");
+    } else {
+      // Civilian: success = all tests passed
+      const allPassed = response.passed === response.total;
+      playSound(allPassed ? "success" : "fail");
+    }
+  }
 
   return (
     <div className="border-t-4 border-[color:var(--brown)]">
@@ -40,7 +57,7 @@ export function SandboxPanel({
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => void execute()}
+            onClick={() => void handleExecute()}
             disabled={actionDisabled || loading}
             className={`pixel-button pixel-button-success text-xs px-3 ${
               actionDisabled || loading ? "opacity-60" : ""
@@ -80,7 +97,7 @@ export function SandboxPanel({
           <span className="pixel-small text-[#5c0a0a]">{error}</span>
           <button
             type="button"
-            onClick={() => void execute()}
+            onClick={() => void handleExecute()}
             className="pixel-button text-xs px-3 min-h-[32px]"
           >
             Retry
