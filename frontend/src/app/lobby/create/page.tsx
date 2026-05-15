@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { createLobby } from "@/lib/api";
 import { setLobbyPlayerId } from "@/lib/player-session";
 
@@ -11,6 +12,9 @@ export default function CreateLobbyPage() {
   const [hostName, setHostName] = useState("Rayyan");
   const [mode, setMode] = useState("standard");
   const [maxPlayers, setMaxPlayers] = useState(4);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [password, setPassword] = useState("");
+  const [difficulty, setDifficulty] = useState("medium");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,6 +28,9 @@ export default function CreateLobbyPage() {
         hostName,
         mode,
         maxPlayers,
+        isPrivate,
+        password: isPrivate ? password : undefined,
+        difficulty,
       });
 
       setLobbyPlayerId(result.lobby.code, result.playerId);
@@ -76,6 +83,51 @@ export default function CreateLobbyPage() {
                 <option value={5}>5 Players</option>
               </select>
             </label>
+            <label className="block">
+              <span className="pixel-small">Difficulty</span>
+              <select
+                className="pixel-input mt-2"
+                value={difficulty}
+                onChange={(event) => setDifficulty(event.target.value)}
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+                <option value="mixed">Mixed</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isPrivate}
+                onChange={(event) => setIsPrivate(event.target.checked)}
+                className="w-4 h-4"
+              />
+              <span className="pixel-small">Private room (require password)</span>
+            </label>
+            <AnimatePresence initial={false}>
+              {isPrivate ? (
+                <motion.label
+                  key="password-field"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="block overflow-hidden"
+                >
+                  <span className="pixel-small">Password</span>
+                  <input
+                    type="password"
+                    className="pixel-input mt-2"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    minLength={1}
+                    required={isPrivate}
+                    placeholder="••••••"
+                  />
+                </motion.label>
+              ) : null}
+            </AnimatePresence>
           </div>
 
           {error ? (

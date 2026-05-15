@@ -16,7 +16,7 @@ export async function ollamaGenerate(prompt, opts = {}) {
             headers,
             signal: controller.signal,
             body: JSON.stringify({
-                model: config.ollamaModel,
+                model: opts.model ?? config.ollamaModel,
                 prompt,
                 system: opts.system,
                 stream: false,

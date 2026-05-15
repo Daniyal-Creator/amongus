@@ -14,6 +14,9 @@ import {
 import { getLobbyPlayerId, setLobbyPlayerId, setSessionPlayerId } from "@/lib/player-session";
 import type { LobbyPlayer, LobbySnapshot } from "@/types";
 import { getCharacterAsset } from "@/lib/character-assets";
+import { useSounds } from "@/lib/sound-provider";
+import { useToast } from "@/lib/toast-provider";
+import { Check } from "lucide-react";
 
 type LobbyRoomClientProps = {
   code: string;
@@ -43,6 +46,28 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [isJoining, setIsJoining] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+  const [codeJustCopied, setCodeJustCopied] = useState(false);
+  const [joinPassword, setJoinPassword] = useState("");
+  const { play } = useSounds();
+  const toast = useToast();
+
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(code.toUpperCase());
+    } catch {
+      // ignore — useless in this fallback path
+    }
+    play("click");
+    setCodeJustCopied(true);
+    toast.push({
+      title: "Lobby code copied!",
+      description: `${code.toUpperCase()} ready to share.`,
+      tone: "success",
+      icon: "📋",
+      durationMs: 2000,
+    });
+    setTimeout(() => setCodeJustCopied(false), 1500);
+  };
 
   useEffect(() => {
     const storedName = window.localStorage.getItem("code-mafia:pending-player-name");
@@ -116,7 +141,10 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
     setError(null);
 
     try {
-      const result = await joinLobby(code, { playerName: joinName.trim() });
+      const result = await joinLobby(code, {
+        playerName: joinName.trim(),
+        password: snapshot?.isPrivate ? joinPassword : undefined,
+      });
       setLobbyPlayerId(code, result.playerId);
       setCurrentUserId(result.playerId);
       await refreshLobby();
@@ -207,11 +235,33 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                   </span>
                   <button
                     type="button"
-                    onClick={() => navigator.clipboard.writeText(code.toUpperCase())}
+                    onClick={handleCopyCode}
                     className="flex justify-center items-center h-[34px] w-[34px] bg-[#d6c3a1] text-[#5c4427] border-[3px] border-[#8a6b45] shadow-[inset_0_0_0_2px_#ebdcb8,2px_2px_0_0_rgba(0,0,0,0.5)] active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all cursor-pointer"
                     title="Copy Code"
                   >
-                    <PixelCopyIcon />
+                    <AnimatePresence mode="wait" initial={false}>
+                      {codeJustCopied ? (
+                        <motion.span
+                          key="check"
+                          initial={{ scale: 0, rotate: -90 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          exit={{ scale: 0, rotate: 90 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                        >
+                          <Check className="w-4 h-4" />
+                        </motion.span>
+                      ) : (
+                        <motion.span
+                          key="copy"
+                          initial={{ scale: 0, rotate: 90 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          exit={{ scale: 0, rotate: -90 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                        >
+                          <PixelCopyIcon />
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
                   </button>
                 </div>
               </div>
@@ -224,9 +274,25 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                   onChange={(event) => setJoinName(event.target.value)}
                   autoFocus
                 />
+                <AnimatePresence initial={false}>
+                  {snapshot?.isPrivate ? (
+                    <motion.input
+                      key="join-password"
+                      initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                      animate={{ opacity: 1, height: "auto", marginTop: 0 }}
+                      exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                      type="password"
+                      className="pixel-input text-center py-3 bg-white text-black"
+                      value={joinPassword}
+                      placeholder="🔒 PASSWORD"
+                      onChange={(event) => setJoinPassword(event.target.value)}
+                      required
+                    />
+                  ) : null}
+                </AnimatePresence>
                 <button
                   type="submit"
-                  disabled={isJoining || !joinName.trim()}
+                  disabled={isJoining || !joinName.trim() || (snapshot?.isPrivate && !joinPassword)}
                   className="pixel-button pixel-button-primary mt-4 w-full text-xl py-3"
                 >
                   {isJoining ? "JOINING..." : "ENTER LOBBY"}
@@ -250,11 +316,33 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                 </span>
                 <button
                   type="button"
-                  onClick={() => navigator.clipboard.writeText(code.toUpperCase())}
+                  onClick={handleCopyCode}
                   className="ml-2 flex justify-center items-center h-[34px] w-[34px] bg-[#d6c3a1] text-[#5c4427] border-[3px] border-[#8a6b45] shadow-[inset_0_0_0_2px_#ebdcb8,2px_2px_0_0_rgba(0,0,0,0.5)] active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all cursor-pointer opacity-90 hover:opacity-100"
                   title="Copy to clipboard"
                 >
-                  <PixelCopyIcon />
+                  <AnimatePresence mode="wait" initial={false}>
+                    {codeJustCopied ? (
+                      <motion.span
+                        key="check2"
+                        initial={{ scale: 0, rotate: -90 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        exit={{ scale: 0, rotate: 90 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                      >
+                        <Check className="w-4 h-4" />
+                      </motion.span>
+                    ) : (
+                      <motion.span
+                        key="copy2"
+                        initial={{ scale: 0, rotate: 90 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        exit={{ scale: 0, rotate: -90 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                      >
+                        <PixelCopyIcon />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
                 </button>
               </div>
             </div>

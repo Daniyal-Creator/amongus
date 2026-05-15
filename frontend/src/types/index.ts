@@ -16,6 +16,7 @@ export type Player = {
   role: PlayerRole;
   status: string;
   meetingVotes?: number;
+  isDisconnected?: boolean;
 };
 
 export type CategoryOption = {
@@ -75,10 +76,23 @@ export type EditorLine = {
 export type LobbySnapshot = {
   host: string;
   status: string;
+  code?: string;
   maxPlayers: number;
+  isPrivate?: boolean;
+  difficulty?: string;
   players: LobbyPlayer[];
   categories: CategoryOption[];
   activeSessionId: string | null;
+};
+
+export type Achievement = {
+  slug: string;
+  title: string;
+  description: string;
+  icon: string;
+  tone: string;
+  awardedAt?: string;
+  sessionId?: string | null;
 };
 
 export type LeaderboardSnapshot = {

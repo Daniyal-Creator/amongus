@@ -14,6 +14,11 @@ import { SandboxPanel } from "@/components/game/panels/SandboxPanel";
 import { SecurityPanel } from "@/components/game/panels/SecurityPanel";
 import { AiAssistPanel } from "@/components/game/panels/AiAssistPanel";
 import { GameReviewPanel } from "@/components/game/panels/GameReviewPanel";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { SoundToggle } from "@/components/ui/SoundToggle";
+import { useSounds } from "@/lib/sound-provider";
+import { useToast } from "@/lib/toast-provider";
+import confetti from "canvas-confetti";
 
 const CodeEditor = dynamic(
   () => import("@/components/editor/CodeEditor").then((m) => m.CodeEditor),
@@ -39,6 +44,14 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const hasShownRoleRef = useRef(false);
   const [ghostToast, setGhostToast] = useState(false);
   const ghostToastTimerRef = useRef<number | null>(null);
+  const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
+  const { play: playSound } = useSounds();
+  const toast = useToast();
+  const previousPhaseRef = useRef<GameSnapshot["phase"] | null>(null);
+  const previousChatLengthRef = useRef(0);
+  const seenAchievementsRef = useRef<Set<string>>(new Set());
+  const lastTickRef = useRef<number | null>(null);
+  const winnerCelebratedRef = useRef(false);
 
   const handleGhostHint = useCallback(() => {
     setGhostToast(true);
@@ -101,6 +114,15 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
         }
       },
       onError: () => {
+        // Show a brief toast and attempt re-fetch — backend keeps the session alive
+        // for AFK_GRACE_MS (2 min) so reconnect is non-destructive.
+        toast.push({
+          tone: "danger",
+          title: "Connection lost",
+          description: "Reconnecting…",
+          icon: "📡",
+          durationMs: 2500,
+        });
         void loadSession();
       },
     });
@@ -226,10 +248,108 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
   function handlePrimaryAction() {
     if (isCivilian) {
-      sendRealtimeMessage({ type: "meeting.start" });
+      // Open confirmation dialog before triggering meeting (avoids accidental clicks).
+      playSound("click");
+      setEmergencyConfirmOpen(true);
     }
     // Imposter has no primary action; sabotage flows through RUN CODE in SandboxPanel.
   }
+
+  function confirmEmergencyMeeting() {
+    setEmergencyConfirmOpen(false);
+    playSound("emergency");
+    sendRealtimeMessage({ type: "meeting.start" });
+  }
+
+  // ── Sound + animation triggers based on snapshot diffs ──
+  useEffect(() => {
+    if (!snapshot) return;
+
+    const prevPhase = previousPhaseRef.current;
+    if (prevPhase !== snapshot.phase) {
+      if (snapshot.phase === "meeting") {
+        playSound("emergency");
+      } else if (snapshot.phase === "game_over" && !winnerCelebratedRef.current) {
+        winnerCelebratedRef.current = true;
+        const myTeam: "civilian" | "imposter" = snapshot.currentUser.role === "civilian" ? "civilian" : "imposter";
+        const won = snapshot.result.winnerTeam === myTeam;
+        playSound(won ? "victory" : "defeat");
+        if (won) {
+          // Confetti burst from both edges for ~1.5s.
+          const end = Date.now() + 1500;
+          const tick = () => {
+            confetti({
+              particleCount: 5,
+              angle: 60,
+              spread: 60,
+              origin: { x: 0, y: 0.7 },
+              colors: ["#a2e858", "#ffcf40", "#74d6ff"],
+            });
+            confetti({
+              particleCount: 5,
+              angle: 120,
+              spread: 60,
+              origin: { x: 1, y: 0.7 },
+              colors: ["#a2e858", "#ffcf40", "#74d6ff"],
+            });
+            if (Date.now() < end) requestAnimationFrame(tick);
+          };
+          tick();
+        }
+      }
+      previousPhaseRef.current = snapshot.phase;
+    }
+
+    // Chat notify on new public message (not when snapshot first loads).
+    const chatLen = snapshot.chatMessages.length;
+    if (previousChatLengthRef.current > 0 && chatLen > previousChatLengthRef.current) {
+      playSound("notify", { volume: 0.4 });
+    }
+    previousChatLengthRef.current = chatLen;
+
+    // Timer tick on last 5 seconds during playing.
+    const seconds = parseInt(snapshot.timeRemaining.replace(/s$/, ""), 10);
+    if (
+      snapshot.phase === "playing" &&
+      !Number.isNaN(seconds) &&
+      seconds > 0 &&
+      seconds <= 5 &&
+      lastTickRef.current !== seconds
+    ) {
+      lastTickRef.current = seconds;
+      playSound("tick", { volume: 0.5 });
+    } else if (seconds > 5) {
+      lastTickRef.current = null;
+    }
+
+    // Achievement detection — system messages with the achievement signature.
+    for (const msg of snapshot.chatMessages) {
+      const match = msg.message.match(/^(\p{Emoji}+)\s+(.+?)\s+earned achievement:\s+(.+)$/u);
+      if (!match) continue;
+      const key = `${msg.timestamp}:${msg.message}`;
+      if (seenAchievementsRef.current.has(key)) continue;
+      seenAchievementsRef.current.add(key);
+      const [, icon, who, title] = match;
+      // Only show full toast for the current player; others get a smaller info toast.
+      const isMe = playerId && snapshot.players.find((p) => p.id === playerId)?.name === who;
+      if (isMe) {
+        toast.push({
+          tone: "achievement",
+          title: `Achievement Unlocked: ${title}`,
+          description: "Cek profilmu untuk lihat semua badge.",
+          icon,
+        });
+      } else {
+        toast.push({
+          tone: "info",
+          title: `${who} earned ${title}`,
+          icon,
+          durationMs: 2500,
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot]);
 
   return (
     <>
@@ -247,6 +367,21 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                 </span>
               ) : null}
               {snapshot.phase === "meeting" ? <span className="pixel-chip text-sm px-4 py-1.5">MEETING</span> : null}
+              {(() => {
+                const me = snapshot.players.find((p) => p.id === snapshot.currentUser.id);
+                if (me && (me.status === "ejected after meeting" || me.status === "left game")) {
+                  return (
+                    <motion.span
+                      initial={{ opacity: 0, scale: 0.6 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="pixel-chip text-sm px-4 py-1.5 bg-[#1a1a2e] text-[#ff688b] border-[#ff688b]"
+                    >
+                      👁️ SPECTATING
+                    </motion.span>
+                  );
+                }
+                return null;
+              })()}
               <span className="pixel-small text-white/80">{snapshot.category}</span>
             </div>
 
@@ -257,8 +392,9 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
               </span>
             </div>
 
-            {/* Right: Timer */}
-            <div className="flex justify-center md:justify-end">
+            {/* Right: Timer + Sound toggle */}
+            <div className="flex items-center justify-center md:justify-end gap-2">
+              <SoundToggle />
               <div className={`rounded-xl border px-5 py-2 text-3xl font-bold tracking-widest transition-all duration-300 ${
                 timeSeconds <= 15
                   ? "bg-red-500/20 border-red-500/50 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-emergency-pulse"
@@ -297,6 +433,25 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                       {player.name}
                       {player.id === snapshot.currentUser.id ? " (You)" : ""}
                     </span>
+                    {player.isDisconnected ? (
+                      <motion.span
+                        initial={{ opacity: 0, scale: 0.6 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="ml-1 inline-flex items-center gap-1 pixel-chip pixel-chip-red text-[9px] px-1 py-0"
+                        title="Player disconnected — AFK timeout in 2 minutes"
+                      >
+                        <motion.span
+                          aria-hidden
+                          animate={{ opacity: [1, 0.3, 1] }}
+                          transition={{ duration: 1.2, repeat: Infinity }}
+                          className="w-1.5 h-1.5 rounded-full bg-red-500"
+                        />
+                        AFK
+                      </motion.span>
+                    ) : null}
+                    {player.status === "left game" ? (
+                      <span className="ml-1 inline-block pixel-chip text-[9px] px-1 py-0 opacity-60">LEFT</span>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -622,37 +777,102 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       ) : null}
       </AnimatePresence>
 
-      {/* Game Over Overlay */}
+      {/* Game Over Overlay — animated scoreboard reveal */}
       <AnimatePresence>
       {snapshot.phase === "game_over" ? (
-        <motion.div 
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
+        <motion.div
+          key="game-over-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4 }}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 px-4 py-10 text-center overflow-y-auto"
           style={{ imageRendering: "pixelated" }}
         >
-          <div className="w-full max-w-3xl">
-            <motion.p 
-              initial={{ scale: 0.8 }}
-              animate={{ scale: 1 }}
-              transition={{ type: "spring", bounce: 0.5 }}
+          <motion.div
+            className="w-full max-w-3xl"
+            initial="hidden"
+            animate="visible"
+            variants={{
+              hidden: {},
+              visible: {
+                transition: { staggerChildren: 0.12, delayChildren: 0.1 },
+              },
+            }}
+          >
+            <motion.p
+              variants={{
+                hidden: { scale: 0.4, opacity: 0, y: -40, rotate: -5 },
+                visible: { scale: 1, opacity: 1, y: 0, rotate: 0 },
+              }}
+              transition={{ type: "spring", stiffness: 280, damping: 15 }}
               className="pixel-title text-4xl sm:text-6xl text-[#ffcf40] drop-shadow-[4px_4px_0_#2b4a1b]"
             >
               GAME OVER
             </motion.p>
-            <div className="bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[8px_8px_0_0_rgba(0,0,0,0.5)] mt-6 p-8 relative overflow-hidden">
-              <p className="pixel-title text-3xl drop-shadow-md flex items-center justify-center gap-3">
-                {snapshot.result.winnerTeam === "civilian" ? <Shield className="w-8 h-8 fill-[#2b4a1b] text-[#2b4a1b]" /> : <Sword className="w-8 h-8 fill-[#7a0f0f] text-[#7a0f0f]" />}{" "}
-                <span className={snapshot.result.winnerTeam === "civilian" ? "text-[#2b4a1b]" : "text-[#7a0f0f]"}>
+            <motion.div
+              variants={{
+                hidden: { scale: 0.85, opacity: 0, y: 30 },
+                visible: { scale: 1, opacity: 1, y: 0 },
+              }}
+              transition={{ type: "spring", stiffness: 240, damping: 22 }}
+              className="bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[8px_8px_0_0_rgba(0,0,0,0.5)] mt-6 p-8 relative overflow-hidden"
+            >
+              {/* Pulsing glow behind winner team text */}
+              <motion.div
+                aria-hidden
+                className={`absolute inset-0 pointer-events-none ${
+                  snapshot.result.winnerTeam === "civilian"
+                    ? "bg-[radial-gradient(circle_at_center,#a2e85844_0%,transparent_60%)]"
+                    : "bg-[radial-gradient(circle_at_center,#ff688b44_0%,transparent_60%)]"
+                }`}
+                animate={{ opacity: [0.4, 0.8, 0.4] }}
+                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <motion.p
+                className="pixel-title text-3xl drop-shadow-md flex items-center justify-center gap-3 relative z-10"
+                initial={{ scale: 0.6 }}
+                animate={{ scale: [0.6, 1.18, 1] }}
+                transition={{ duration: 0.7, ease: "easeOut", delay: 0.2 }}
+              >
+                {snapshot.result.winnerTeam === "civilian" ? (
+                  <Shield className="w-8 h-8 fill-[#2b4a1b] text-[#2b4a1b]" />
+                ) : (
+                  <Sword className="w-8 h-8 fill-[#7a0f0f] text-[#7a0f0f]" />
+                )}{" "}
+                <span
+                  className={
+                    snapshot.result.winnerTeam === "civilian"
+                      ? "text-[#2b4a1b]"
+                      : "text-[#7a0f0f]"
+                  }
+                >
                   {snapshot.result.winnerTeam?.toUpperCase() ?? "UNKNOWN"} WINS
                 </span>
-              </p>
-              <p className="pixel-small mt-4 text-[#5c4427] font-bold">
+              </motion.p>
+              <motion.p
+                variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
+                className="pixel-small mt-4 text-[#5c4427] font-bold relative z-10"
+              >
                 {snapshot.result.reason ?? "Session ended."}
-              </p>
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              </motion.p>
+              <motion.div
+                className="mt-8 grid gap-3 sm:grid-cols-2 relative z-10"
+                variants={{
+                  hidden: {},
+                  visible: { transition: { staggerChildren: 0.08, delayChildren: 0.5 } },
+                }}
+              >
                 {snapshot.players.map((player) => (
-                  <div key={player.id} className="bg-[#f4e4c1] border-[4px] border-[#8b5a2b] shadow-[4px_4px_0_0_rgba(0,0,0,0.3)] px-4 py-3 flex items-center justify-between">
+                  <motion.div
+                    key={player.id}
+                    variants={{
+                      hidden: { opacity: 0, x: -30 },
+                      visible: { opacity: 1, x: 0 },
+                    }}
+                    transition={{ type: "spring", stiffness: 320, damping: 24 }}
+                    className="bg-[#f4e4c1] border-[4px] border-[#8b5a2b] shadow-[4px_4px_0_0_rgba(0,0,0,0.3)] px-4 py-3 flex items-center justify-between"
+                  >
                     <div className="flex items-center gap-3">
                       <div className="w-[32px] h-[32px] bg-[#8a6b45] border-[2px] border-[#5c4427] shadow-[inset_0_0_4px_rgba(0,0,0,0.3)] flex justify-center items-center relative shrink-0">
                         <Image src={getCharacterAsset(player.id)} alt={player.name} width={24} height={24} className="object-contain drop-shadow-md" unoptimized style={{ imageRendering: "pixelated" }} />
@@ -660,12 +880,17 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                       </div>
                       <span className="pixel-small font-bold text-[#39404f]">{player.name}</span>
                     </div>
-                    <span className={`pixel-chip text-[10px] ${player.role === "imposter" ? "pixel-chip-red" : "pixel-chip-green"}`}>
+                    <motion.span
+                      initial={{ rotateY: 180, opacity: 0 }}
+                      animate={{ rotateY: 0, opacity: 1 }}
+                      transition={{ delay: 0.9, type: "spring", stiffness: 280, damping: 20 }}
+                      className={`pixel-chip text-[10px] ${player.role === "imposter" ? "pixel-chip-red" : "pixel-chip-green"}`}
+                    >
                       {player.role.toUpperCase()}
-                    </span>
-                  </div>
+                    </motion.span>
+                  </motion.div>
                 ))}
-              </div>
+              </motion.div>
 
               {/* AI Post-Game Review */}
               <div className="mt-8">
@@ -677,12 +902,12 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                 whileTap={{ scale: 0.95 }}
                 type="button"
                 onClick={() => window.location.href = "/"}
-                className="pixel-button pixel-button-primary mt-8 text-xl px-10 py-4 shadow-[0_6px_0_0_#9a6a00]"
+                className="pixel-button pixel-button-primary mt-8 text-xl px-10 py-4 shadow-[0_6px_0_0_#9a6a00] relative z-10"
               >
                 BACK TO HOME
               </motion.button>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </motion.div>
       ) : null}
       </AnimatePresence>
@@ -734,6 +959,17 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
           )}
         </div>
       ) : null}
+
+      <ConfirmDialog
+        open={emergencyConfirmOpen}
+        title="Trigger Emergency Meeting?"
+        message="Semua pemain akan dipanggil ke meeting. Editor akan di-snapshot dan voting akan dimulai. Lanjut?"
+        confirmLabel="YES, CALL MEETING"
+        cancelLabel="CANCEL"
+        tone="danger"
+        onConfirm={confirmEmergencyMeeting}
+        onCancel={() => setEmergencyConfirmOpen(false)}
+      />
     </>
   );
 }

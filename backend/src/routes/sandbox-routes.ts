@@ -31,7 +31,7 @@ function isImposterTaskDef(t: unknown): t is ImposterTaskDef {
 export function registerSandboxRoutes(app: FastifyInstance) {
   app.post<{
     Params: { sessionId: string };
-    Body: { playerId: string; stdin?: string };
+    Body: { playerId: string; stdin?: string; code?: string };
   }>(
     "/api/sessions/:sessionId/execute",
     {
@@ -42,6 +42,7 @@ export function registerSandboxRoutes(app: FastifyInstance) {
           properties: {
             playerId: { type: "string", minLength: 8 },
             stdin: { type: "string", maxLength: 4000 },
+            code: { type: "string", maxLength: 65536 },
           },
         },
       },
@@ -79,6 +80,13 @@ export function registerSandboxRoutes(app: FastifyInstance) {
       const session = sessionRow.rows[0];
       if (!session) return reply.code(404).send({ message: "Session not found." });
 
+      if (session.phase !== "playing") {
+        return reply.code(403).send({ message: "Code execution is only available while playing." });
+      }
+
+      // Use code submitted in the request body; fall back to the shared editor content.
+      const editorContent = request.body.code ?? session.editor_content;
+
       /* ── Imposter path ── */
       if (info.role === "imposter") {
         const rawTasks = Array.isArray(session.imposter_objectives) ? session.imposter_objectives : [];
@@ -91,7 +99,7 @@ export function registerSandboxRoutes(app: FastifyInstance) {
           ? session.imposter_task_progress.filter((n: unknown): n is number => typeof n === "number")
           : [];
 
-        const validation = validateImposterTasks(session.editor_content, tasks, previouslyCompleted);
+        const validation = validateImposterTasks(editorContent, tasks, previouslyCompleted);
 
         let nextCharges = session.sabotage_charges;
         if (validation.newlyCompleted.length > 0 && session.phase === "playing") {
@@ -149,15 +157,15 @@ export function registerSandboxRoutes(app: FastifyInstance) {
 
       let results;
       if (expressionTests.length > 0) {
-        results = await runChallengeTests(session.language, session.editor_content, expressionTests);
+        results = await runChallengeTests(session.language, editorContent, expressionTests);
       } else if (rawTests.length > 0) {
         const legacyTests = (rawTests as Array<{ input?: string; expected?: string }>).map((t) => ({
           input: t.input ?? "",
           expected: t.expected ?? "",
         }));
-        results = await runTests(session.language, session.editor_content, legacyTests);
+        results = await runTests(session.language, editorContent, legacyTests);
       } else {
-        const single = await runCode(session.language, session.editor_content, request.body.stdin ?? "");
+        const single = await runCode(session.language, editorContent, request.body.stdin ?? "");
         results = [
           {
             passed: single.ok,

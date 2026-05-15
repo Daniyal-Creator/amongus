@@ -91,6 +91,9 @@ export function createLobby(payload: {
   hostName: string;
   mode: string;
   maxPlayers: number;
+  isPrivate?: boolean;
+  password?: string;
+  difficulty?: string;
 }) {
   if (MOCK_MODE) {
     return createMockLobby(payload);
@@ -102,7 +105,7 @@ export function createLobby(payload: {
   });
 }
 
-export function joinLobby(code: string, payload: { playerName: string }) {
+export function joinLobby(code: string, payload: { playerName: string; password?: string }) {
   if (MOCK_MODE) {
     return joinMockLobby(code, payload);
   }
@@ -111,6 +114,16 @@ export function joinLobby(code: string, payload: { playerName: string }) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getPlayerAchievements(playerId: string) {
+  return request<{ achievements: import("@/types").Achievement[] }>(
+    `/players/${encodeURIComponent(playerId)}/achievements`,
+  );
+}
+
+export function getAvailableAchievements() {
+  return request<{ achievements: import("@/types").Achievement[] }>(`/achievements`);
 }
 
 export function getLobby(code: string) {

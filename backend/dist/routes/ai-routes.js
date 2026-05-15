@@ -54,7 +54,13 @@ export function registerAiRoutes(app) {
         if (ctx.phase !== "playing") {
             return reply.code(409).send({ message: "Sabotage suggestions only available during play." });
         }
-        const result = await ollamaGenerate(buildSabotageSuggestPrompt(ctx.challenge_title, ctx.language, ctx.editor_content), { system: SABOTAGE_SUGGEST_SYSTEM, temperature: 0.8, maxTokens: 60, timeoutMs: 20_000 });
+        const result = await ollamaGenerate(buildSabotageSuggestPrompt(ctx.challenge_title, ctx.language, ctx.editor_content), {
+            system: SABOTAGE_SUGGEST_SYSTEM,
+            temperature: 0.8,
+            maxTokens: 60,
+            timeoutMs: 20_000,
+            model: config.ollamaModelImposter,
+        });
         if (!result.ok) {
             // Use a short fallback hint when AI is unavailable
             const fallbackHint = "Ganti operator < menjadi <= di loop utama";
@@ -71,7 +77,7 @@ export function registerAiRoutes(app) {
          VALUES ($1, $2, 'ghost.ai', '#ff688b', $3)`, [createId(), sessionId, result.text]);
         return {
             suggestion: result.text,
-            model: config.ollamaModel,
+            model: config.ollamaModelImposter,
             remaining: rl.remaining,
         };
     });
@@ -107,7 +113,13 @@ export function registerAiRoutes(app) {
         if (!ctx || ctx.phase !== "playing") {
             return reply.code(409).send({ message: "Poisoning only available during play." });
         }
-        const result = await ollamaGenerate(buildCopilotPoisonPrompt(ctx.challenge_title, ctx.language, ctx.editor_content), { system: COPILOT_POISON_SYSTEM, temperature: 0.9, maxTokens: 220, timeoutMs: 20_000 });
+        const result = await ollamaGenerate(buildCopilotPoisonPrompt(ctx.challenge_title, ctx.language, ctx.editor_content), {
+            system: COPILOT_POISON_SYSTEM,
+            temperature: 0.9,
+            maxTokens: 220,
+            timeoutMs: 20_000,
+            model: config.ollamaModelImposter,
+        });
         const poisonedHint = result.ok
             ? result.text
             : "```\n// Hint: swap the boundary check to `i <= n` for safety.\n```\nHint: tighter loop bound.";
@@ -143,7 +155,13 @@ export function registerAiRoutes(app) {
             winnerTeam: ctx.winner_team ?? "unknown",
             reason: ctx.end_reason ?? "unknown",
             sabotageLog: sabotageRows.rows.map((r) => r.description),
-        }), { system: REVIEW_SYSTEM, temperature: 0.5, maxTokens: 600, timeoutMs: 30_000 });
+        }), {
+            system: REVIEW_SYSTEM,
+            temperature: 0.5,
+            maxTokens: 600,
+            timeoutMs: 60_000,
+            model: config.ollamaModelReview,
+        });
         const content = result.ok
             ? result.text
             : [
@@ -156,7 +174,7 @@ export function registerAiRoutes(app) {
             ].join("\n");
         await query(`INSERT INTO session_reviews (id, session_id, content, model)
        VALUES ($1, $2, $3, $4)
-       ON CONFLICT (session_id) DO UPDATE SET content = EXCLUDED.content, model = EXCLUDED.model`, [createId(), sessionId, content, result.ok ? config.ollamaModel : "fallback"]);
-        return { review: content, model: result.ok ? config.ollamaModel : "fallback", cached: false };
+       ON CONFLICT (session_id) DO UPDATE SET content = EXCLUDED.content, model = EXCLUDED.model`, [createId(), sessionId, content, result.ok ? config.ollamaModelReview : "fallback"]);
+        return { review: content, model: result.ok ? config.ollamaModelReview : "fallback", cached: false };
     });
 }

@@ -1527,3 +1527,16 @@ export const HALL_OF_FAME_SEEDS = [
   { id: "hall-3", title: "Verified Developer", player: "dina.stack", description: "Menjalankan security scanner tepat sebelum emergency meeting dan menemukan poisoned suggestion.", tone: "accent", sortOrder: 3 },
   { id: "hall-4", title: "Clutch Caller", player: "nabila.dev", description: "Memicu emergency meeting setelah melihat mutation di helper loop boundary.", tone: "warning", sortOrder: 4 },
 ] as const;
+
+export const ACHIEVEMENT_SEEDS = [
+  { slug: "first-blood", title: "First Blood", description: "Berhasil eject imposter dalam emergency meeting pertama.", icon: "🩸", tone: "achievement" },
+  { slug: "master-saboteur", title: "Master Saboteur", description: "Selesaikan 5 sabotage task dalam satu game.", icon: "🔪", tone: "achievement" },
+  { slug: "ghost-hunter", title: "Ghost Hunter", description: "Eject imposter 3 kali berturut dalam sesi yang berbeda.", icon: "👻", tone: "achievement" },
+  { slug: "speed-coder", title: "Speed Coder", description: "Lolos semua test dalam waktu kurang dari 60 detik.", icon: "⚡", tone: "achievement" },
+  { slug: "untouchable", title: "Untouchable", description: "Menang sebagai imposter tanpa pernah diselidiki di emergency meeting.", icon: "🥷", tone: "achievement" },
+  { slug: "chatterbox", title: "Chatterbox", description: "Kirim 50 pesan chat lintas sesi.", icon: "💬", tone: "achievement" },
+  { slug: "verified-dev", title: "Verified Developer", description: "Lulus security scanner tanpa temuan vulnerability.", icon: "🛡️", tone: "achievement" },
+  { slug: "no-bug-survivor", title: "No-Bug Survivor", description: "Menyelesaikan 5 sesi sebagai civilian tanpa pernah di-eject.", icon: "🎯", tone: "achievement" },
+  { slug: "clutch-caller", title: "Clutch Caller", description: "Trigger emergency meeting yang berhasil eject imposter.", icon: "🚨", tone: "achievement" },
+  { slug: "team-player", title: "Team Player", description: "Memberikan vote benar di 5 emergency meeting berbeda.", icon: "🤝", tone: "achievement" },
+] as const;

@@ -12,6 +12,9 @@ import { registerAiRoutes } from "./routes/ai-routes.js";
 import { registerSecurityRoutes } from "./routes/security-routes.js";
 import { registerSandboxRoutes } from "./routes/sandbox-routes.js";
 import { registerLeaderboardRoutes } from "./routes/leaderboard-routes.js";
+import { appendSystemMessage } from "./services/session-effects.js";
+import { hashPassword, verifyLobbyPassword } from "./services/lobby-password.js";
+import { evaluateAchievements } from "./services/achievements.js";
 /* ────────────── Constants ────────────── */
 const COLOR_PALETTE = ["#14f59b", "#ffd95a", "#6da8ff", "#ff688b", "#ff9f43"];
 const PLAYER_TITLES = [
@@ -25,124 +28,6 @@ const ROUND_DURATION_SECONDS = 120;
 const CATEGORY_VOTE_DURATION_SECONDS = 10;
 const CHAT_RATE_LIMIT_WINDOW_MS = 10_000;
 const CHAT_RATE_LIMIT_MAX = 10;
-/* ────────────── Sabotage mutations ────────────── */
-const SABOTAGE_MUTATIONS = [
-    {
-        name: "strict_to_loose",
-        description: "Changed === to == (strict → loose equality)",
-        apply: (code) => code.replace(/===/, "=="),
-    },
-    {
-        name: "loose_to_strict",
-        description: "Changed == to === (loose → strict equality)",
-        apply: (code) => code.replace(/([^!=<>])={2}([^=])/, "$1===$2"),
-    },
-    {
-        name: "less_to_leq",
-        description: "Changed < to <= (off-by-one in loop)",
-        apply: (code) => {
-            const match = code.match(/(\w+)\s*<\s*(\w+)\.(length|size|count)/);
-            if (match) {
-                return code.replace(match[0], match[0].replace("<", "<="));
-            }
-            return code.replace(/([^<])< /, "$1<= ");
-        },
-    },
-    {
-        name: "greater_to_geq",
-        description: "Changed > to >= (boundary condition shift)",
-        apply: (code) => {
-            const match = code.match(/([^>])> /);
-            if (match) {
-                return code.replace(match[0], match[0].replace("> ", ">= "));
-            }
-            return code;
-        },
-    },
-    {
-        name: "plus_to_minus",
-        description: "Changed += to -= (accumulator direction reversed)",
-        apply: (code) => {
-            const lines = code.split("\n");
-            for (let i = lines.length - 1; i >= 0; i--) {
-                if (lines[i].includes("+=") && !lines[i].includes("self.length") && !lines[i].includes("size")) {
-                    lines[i] = lines[i].replace("+=", "-=");
-                    break;
-                }
-            }
-            return lines.join("\n");
-        },
-    },
-    {
-        name: "swap_return",
-        description: "Changed return value to return None/null",
-        apply: (code) => {
-            const lines = code.split("\n");
-            for (let i = lines.length - 1; i >= 0; i--) {
-                if (/return\s+\w/.test(lines[i]) && !lines[i].includes("return None") && !lines[i].includes("return null") && !lines[i].includes("return False")) {
-                    if (code.includes("def ")) {
-                        lines[i] = lines[i].replace(/return\s+.+/, "return None");
-                    }
-                    else {
-                        lines[i] = lines[i].replace(/return\s+.+/, "return null;");
-                    }
-                    break;
-                }
-            }
-            return lines.join("\n");
-        },
-    },
-    {
-        name: "swap_increment",
-        description: "Changed i++ to i-- (loop direction reversed)",
-        apply: (code) => {
-            const lines = code.split("\n");
-            for (let i = 0; i < lines.length; i++) {
-                if (lines[i].includes("++") && lines[i].includes("i") && !lines[i].includes("//")) {
-                    lines[i] = lines[i].replace("++", "--");
-                    break;
-                }
-            }
-            return lines.join("\n");
-        },
-    },
-    {
-        name: "comment_out_line",
-        description: "Commented out a critical line",
-        apply: (code) => {
-            const lines = code.split("\n");
-            const candidates = lines
-                .map((line, index) => ({ line: line.trim(), index }))
-                .filter((item) => item.line.length > 5 &&
-                !item.line.startsWith("//") &&
-                !item.line.startsWith("#") &&
-                !item.line.startsWith("class ") &&
-                !item.line.startsWith("def ") &&
-                !item.line.startsWith("function ") &&
-                !item.line.startsWith("export ") &&
-                !item.line.startsWith("{") &&
-                !item.line.startsWith("}") &&
-                (item.line.includes("return") || item.line.includes("self.") || item.line.includes("result") || item.line.includes("push")));
-            if (candidates.length > 0) {
-                const target = candidates[randomInt(0, candidates.length)];
-                const prefix = code.includes("def ") ? "# " : "// ";
-                const indent = lines[target.index].match(/^(\s*)/)?.[1] ?? "";
-                lines[target.index] = `${indent}${prefix}${lines[target.index].trim()}`;
-            }
-            return lines.join("\n");
-        },
-    },
-];
-function applySabotage(code) {
-    const shuffled = [...SABOTAGE_MUTATIONS].sort(() => Math.random() - 0.5);
-    for (const mutation of shuffled) {
-        const result = mutation.apply(code);
-        if (result !== code) {
-            return { mutatedCode: result, mutation };
-        }
-    }
-    return { mutatedCode: code, mutation: shuffled[0] };
-}
 /* ────────────── Chat rate limiter (delegated to services/rate-limit) ────────────── */
 async function checkChatRateLimit(playerId) {
     const result = await chatRateLimit(playerId);
@@ -212,7 +97,7 @@ async function getCategories() {
 }
 async function getLobbyByCode(code) {
     const lobbyResult = await query(`
-      SELECT id, code, mode, max_players, status, host_player_id
+      SELECT id, code, mode, max_players, status, host_player_id, is_private, difficulty
       FROM lobbies
       WHERE code = $1
     `, [code.toUpperCase()]);
@@ -233,6 +118,8 @@ async function getLobbyByCode(code) {
         maxPlayers: lobby.max_players,
         status: lobby.status,
         hostPlayerId: lobby.host_player_id,
+        isPrivate: lobby.is_private,
+        difficulty: lobby.difficulty,
         players: playersResult.rows.map(normalizePlayer),
     };
 }
@@ -252,7 +139,10 @@ async function getLobbySnapshot(code) {
     return {
         host: lobby.players.find((player) => player.isHost)?.name ?? "-",
         status: lobby.status,
+        code: lobby.code,
         maxPlayers: lobby.maxPlayers,
+        isPrivate: lobby.isPrivate,
+        difficulty: lobby.difficulty,
         players: lobby.players,
         categories,
         activeSessionId,
@@ -263,7 +153,8 @@ async function getSessionSnapshot(sessionId, playerId) {
       SELECT
         id, challenge_id, category_slug, phase, round, max_rounds,
         sabotage_charges, time_remaining_seconds, editor_content,
-        meeting_started_by, meeting_snippet, winner_team, end_reason
+        meeting_started_by, meeting_snippet, winner_team, end_reason,
+        imposter_task_progress
       FROM sessions
       WHERE id = $1
     `, [sessionId]);
@@ -271,9 +162,9 @@ async function getSessionSnapshot(sessionId, playerId) {
     if (!session) {
         return null;
     }
-    const [playersResult, categories, challengeResult, chatMessagesResult, imposterMessagesResult, categoryVotesResult, meetingVotesResult] = await Promise.all([
+    const [playersResult, categories, challengeResult, chatMessagesResult, imposterMessagesResult, categoryVotesResult, meetingVotesResult, latestTestRunResult] = await Promise.all([
         query(`
-        SELECT lp.id, lp.name, lp.color, sp.role, sp.status
+        SELECT lp.id, lp.name, lp.color, sp.role, sp.status, sp.disconnected_at
         FROM session_players sp
         JOIN lobby_players lp ON lp.id = sp.player_id
         WHERE sp.session_id = $1
@@ -309,6 +200,13 @@ async function getSessionSnapshot(sessionId, playerId) {
         FROM session_meeting_votes
         WHERE session_id = $1
       `, [session.id]),
+        query(`
+        SELECT results
+        FROM session_test_runs
+        WHERE session_id = $1 AND player_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1
+      `, [session.id, playerId ?? ""]),
     ]);
     const challenge = challengeResult.rows[0];
     const players = playersResult.rows;
@@ -324,6 +222,25 @@ async function getSessionSnapshot(sessionId, playerId) {
     for (const vote of meetingVotes) {
         meetingVoteCount.set(vote.target_player_id, (meetingVoteCount.get(vote.target_player_id) ?? 0) + 1);
     }
+    const latestResults = (() => {
+        const raw = latestTestRunResult.rows[0]?.results;
+        if (!Array.isArray(raw))
+            return [];
+        return raw;
+    })();
+    const civilianObjectives = challenge.objectives.map((objective, index) => ({
+        ...objective,
+        done: latestResults[index]?.passed === true,
+    }));
+    const imposterTaskProgress = Array.isArray(session.imposter_task_progress)
+        ? session.imposter_task_progress
+        : [];
+    const imposterObjectives = challenge.imposter_objectives.map((objective, index) => ({
+        title: objective.title,
+        description: objective.description,
+        lineHint: objective.lineHint,
+        done: imposterTaskProgress.includes(index),
+    }));
     return {
         phase: session.phase,
         round: session.round,
@@ -352,9 +269,10 @@ async function getSessionSnapshot(sessionId, playerId) {
         players: players.map((player) => ({
             ...player,
             meetingVotes: meetingVoteCount.get(player.id) ?? 0,
+            isDisconnected: player.disconnected_at !== null && player.status !== "left game" && player.status !== "ejected after meeting",
         })),
-        objectives: challenge.objectives,
-        imposterObjectives: challenge.imposter_objectives,
+        objectives: civilianObjectives,
+        imposterObjectives: imposterObjectives,
         chatMessages: chatMessagesResult.rows.map((message) => ({
             user: message.user_name,
             color: message.color,
@@ -468,7 +386,7 @@ async function publishLobby(code) {
         payload: snapshot,
     });
 }
-async function publishSession(sessionId) {
+export async function publishSession(sessionId) {
     const subscribers = sessionSubscribers.get(sessionId);
     if (!subscribers || subscribers.size === 0) {
         return;
@@ -488,20 +406,8 @@ async function publishSession(sessionId) {
         }));
     }
 }
-async function appendSystemMessage(sessionId, message) {
-    await query(`
-      INSERT INTO session_chat_messages (id, session_id, player_id, user_name, color, message)
-      VALUES ($1, $2, NULL, 'system', '#f0a92e', $3)
-    `, [createId(), sessionId, message]);
-}
-async function appendImposterMessage(sessionId, message) {
-    await query(`
-      INSERT INTO session_imposter_messages (id, session_id, user_name, color, message)
-      VALUES ($1, $2, 'ghost.ai', '#ff688b', $3)
-    `, [createId(), sessionId, message]);
-}
 /* ────────────── Game logic ────────────── */
-async function finishGame(sessionId, winnerTeam, reason) {
+export async function finishGame(sessionId, winnerTeam, reason) {
     const categoryResult = await query(`SELECT category_slug FROM sessions WHERE id = $1`, [sessionId]);
     const categorySlug = categoryResult.rows[0]?.category_slug;
     const lobbyResult = await query(`
@@ -535,6 +441,18 @@ async function finishGame(sessionId, winnerTeam, reason) {
         catch (err) {
             app.log.warn({ err, sessionId }, "scoring failed");
         }
+    }
+    // Achievement evaluation. Awards persisted; broadcast to players via system messages.
+    try {
+        const awards = await evaluateAchievements({ sessionId, winnerTeam });
+        for (const award of awards) {
+            const playerResult = await query(`SELECT name FROM lobby_players WHERE id = $1`, [award.playerId]);
+            const playerName = playerResult.rows[0]?.name ?? "Player";
+            await appendSystemMessage(sessionId, `${award.icon} ${playerName} earned achievement: ${award.title}`);
+        }
+    }
+    catch (err) {
+        app.log.warn({ err, sessionId }, "achievement evaluation failed");
     }
     await publishSession(sessionId);
 }
@@ -618,6 +536,53 @@ async function resolveCategoryVote(sessionId) {
     await appendSystemMessage(sessionId, `Category locked: ${selectedCategorySlug.toUpperCase()}. Round ${session.round} started.${tieNote}`);
     await publishSession(sessionId);
 }
+/**
+ * Periodic sweep: any player disconnected for more than AFK_GRACE_MS in an
+ * actively-playing session is forfeited (status = 'left game'). If this leaves
+ * the session unplayable (no civilians left, or no imposter), end the game.
+ */
+const AFK_GRACE_MS = 120_000; // 2 minutes
+async function sweepAfkPlayers() {
+    const stale = await query(`SELECT sp.session_id, sp.player_id, sp.role
+     FROM session_players sp
+     JOIN sessions s ON s.id = sp.session_id
+     WHERE sp.disconnected_at IS NOT NULL
+       AND sp.status NOT IN ('left game', 'ejected after meeting')
+       AND s.phase IN ('category', 'playing', 'meeting')
+       AND sp.disconnected_at < NOW() - INTERVAL '${AFK_GRACE_MS / 1000} seconds'`);
+    if (stale.rows.length === 0)
+        return;
+    const affectedSessions = new Set();
+    for (const row of stale.rows) {
+        await query(`UPDATE session_players SET status = 'left game' WHERE session_id = $1 AND player_id = $2`, [row.session_id, row.player_id]);
+        affectedSessions.add(row.session_id);
+        const playerRow = await query(`SELECT name FROM lobby_players WHERE id = $1`, [row.player_id]);
+        const name = playerRow.rows[0]?.name ?? "Player";
+        await appendSystemMessage(row.session_id, `🚪 ${name} left (AFK timeout).`);
+    }
+    // After sweeping, check win conditions per affected session.
+    for (const sessionId of affectedSessions) {
+        const counts = await query(`SELECT role, COUNT(*)::text AS alive
+       FROM session_players
+       WHERE session_id = $1
+         AND status NOT IN ('left game', 'ejected after meeting')
+       GROUP BY role`, [sessionId]);
+        const alive = new Map();
+        for (const r of counts.rows)
+            alive.set(r.role, Number(r.alive));
+        const civAlive = alive.get("civilian") ?? 0;
+        const impAlive = alive.get("imposter") ?? 0;
+        if (impAlive === 0 && civAlive > 0) {
+            await finishGame(sessionId, "civilian", "Imposter left the game. Civilians win by default.");
+        }
+        else if (civAlive <= 1 && impAlive > 0) {
+            await finishGame(sessionId, "imposter", "Too many civilians AFK. Imposter wins by default.");
+        }
+        else {
+            await publishSession(sessionId);
+        }
+    }
+}
 async function tickActiveSessions() {
     const sessionsResult = await query(`
       SELECT id, phase, time_remaining_seconds
@@ -678,9 +643,26 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
     const realtimeSocket = socket;
     realtimeSocket.playerId = request.query.playerId;
     registerSocket(sessionSubscribers, sessionId, realtimeSocket);
+    // Reconnect tracking: clear disconnected_at, refresh last_seen_at.
+    if (realtimeSocket.playerId) {
+        try {
+            await query(`UPDATE session_players
+           SET last_seen_at = NOW(), disconnected_at = NULL
+           WHERE session_id = $1 AND player_id = $2`, [sessionId, realtimeSocket.playerId]);
+        }
+        catch (err) {
+            app.log.warn({ err }, "failed to mark player as connected");
+        }
+    }
     realtimeSocket.on("close", () => {
-        if (realtimeSocket.playerId)
+        if (realtimeSocket.playerId) {
             clearCursor(sessionId, realtimeSocket.playerId);
+            // Stamp disconnected_at so AFK sweeper can decide whether to forfeit.
+            const playerId = realtimeSocket.playerId;
+            query(`UPDATE session_players
+           SET disconnected_at = NOW()
+           WHERE session_id = $1 AND player_id = $2`, [sessionId, playerId]).catch((err) => app.log.warn({ err }, "failed to mark player as disconnected"));
+        }
     });
     realtimeSocket.on("message", async (payload) => {
         try {
@@ -702,7 +684,6 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
             if (!roleInfo) {
                 return;
             }
-            const playerRole = roleInfo.role;
             // Hardened: ejected players cannot mutate game state via WS.
             if (roleInfo.ejected &&
                 data.type !== "chat.send" &&
@@ -858,81 +839,66 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
                         counts.set(vote.target_player_id, (counts.get(vote.target_player_id) ?? 0) + 1);
                     }
                     const ranked = [...counts.entries()].sort((left, right) => right[1] - left[1]);
-                    const winnerId = ranked[0]?.[0] ?? null;
-                    const ejectedName = playerNames.rows.find((player) => player.id === winnerId)?.name ?? "unknown";
-                    const ejectedRole = winnerId
-                        ? (await query(`
-                        SELECT role
-                        FROM session_players
-                        WHERE session_id = $1 AND player_id = $2
-                      `, [sessionId, winnerId])).rows[0]?.role ?? null
-                        : null;
-                    if (winnerId) {
+                    const topVoteCount = ranked[0]?.[1] ?? 0;
+                    const tiedTop = ranked.filter(([, c]) => c === topVoteCount).map(([id]) => id);
+                    // ── Tie-breaker: if 2+ players tied at the top, no one is ejected ──
+                    if (tiedTop.length > 1) {
                         await query(`
-                  UPDATE session_players
-                  SET status = 'ejected after meeting'
-                  WHERE session_id = $1 AND player_id = $2
-                `, [sessionId, winnerId]);
+                  UPDATE sessions
+                  SET phase = 'playing',
+                      meeting_started_by = NULL,
+                      meeting_snippet = ''
+                  WHERE id = $1
+                `, [sessionId]);
+                        await query(`DELETE FROM session_meeting_votes WHERE session_id = $1`, [sessionId]);
+                        const tiedNames = tiedTop
+                            .map((id) => playerNames.rows.find((p) => p.id === id)?.name ?? "unknown")
+                            .join(" & ");
+                        await appendSystemMessage(sessionId, `⚖️ Vote tied between ${tiedNames}. No one ejected this round.`);
                     }
-                    await query(`
-                UPDATE sessions
-                SET phase = 'playing',
-                    meeting_started_by = NULL,
-                    meeting_snippet = ''
-                WHERE id = $1
-              `, [sessionId]);
-                    await query(`DELETE FROM session_meeting_votes WHERE session_id = $1`, [sessionId]);
-                    await appendSystemMessage(sessionId, `🗳️ ${ejectedName} received the most votes and was ejected.`);
-                    if (ejectedRole === "imposter") {
-                        await finishGame(sessionId, "civilian", `${ejectedName} was the impostor! Civilian team wins. 🎉`);
-                        return;
+                    else {
+                        const winnerId = ranked[0]?.[0] ?? null;
+                        const ejectedName = playerNames.rows.find((player) => player.id === winnerId)?.name ?? "unknown";
+                        const ejectedRole = winnerId
+                            ? (await query(`
+                          SELECT role
+                          FROM session_players
+                          WHERE session_id = $1 AND player_id = $2
+                        `, [sessionId, winnerId])).rows[0]?.role ?? null
+                            : null;
+                        if (winnerId) {
+                            await query(`
+                    UPDATE session_players
+                    SET status = 'ejected after meeting'
+                    WHERE session_id = $1 AND player_id = $2
+                  `, [sessionId, winnerId]);
+                        }
+                        await query(`
+                  UPDATE sessions
+                  SET phase = 'playing',
+                      meeting_started_by = NULL,
+                      meeting_snippet = ''
+                  WHERE id = $1
+                `, [sessionId]);
+                        await query(`DELETE FROM session_meeting_votes WHERE session_id = $1`, [sessionId]);
+                        await appendSystemMessage(sessionId, `🗳️ ${ejectedName} received the most votes and was ejected.`);
+                        if (ejectedRole === "imposter") {
+                            await finishGame(sessionId, "civilian", `${ejectedName} was the impostor! Civilian team wins. 🎉`);
+                            return;
+                        }
+                        // Check if all civilians are ejected (imposter wins)
+                        const remainingCivilians = await query(`
+                  SELECT COUNT(*)::text AS count
+                  FROM session_players
+                  WHERE session_id = $1
+                    AND role = 'civilian'
+                    AND status != 'ejected after meeting'
+                `, [sessionId]);
+                        if (Number(remainingCivilians.rows[0]?.count ?? "0") <= 1) {
+                            await finishGame(sessionId, "imposter", "Too many civilians were ejected. Imposter wins! 🔪");
+                            return;
+                        }
                     }
-                    // Check if all civilians are ejected (imposter wins)
-                    const remainingCivilians = await query(`
-                SELECT COUNT(*)::text AS count
-                FROM session_players
-                WHERE session_id = $1
-                  AND role = 'civilian'
-                  AND status != 'ejected after meeting'
-              `, [sessionId]);
-                    if (Number(remainingCivilians.rows[0]?.count ?? "0") <= 1) {
-                        await finishGame(sessionId, "imposter", "Too many civilians were ejected. Imposter wins! 🔪");
-                        return;
-                    }
-                }
-            }
-            /* ── Sabotage ── */
-            if (data.type === "sabotage.use") {
-                if (sessionMeta.phase !== "playing" || playerRole !== "imposter") {
-                    return;
-                }
-                if (sessionMeta.sabotage_charges <= 0) {
-                    return;
-                }
-                // Get current editor content and apply sabotage mutation
-                const editorResult = await query(`SELECT editor_content FROM sessions WHERE id = $1`, [sessionId]);
-                const currentContent = editorResult.rows[0]?.editor_content ?? "";
-                const { mutatedCode, mutation } = applySabotage(currentContent);
-                await query(`
-              UPDATE sessions
-              SET sabotage_charges = sabotage_charges - 1,
-                  editor_content = $2
-              WHERE id = $1
-            `, [sessionId, mutatedCode]);
-                await query(`
-              UPDATE session_players
-              SET status = 'used sabotage charge'
-              WHERE session_id = $1 AND player_id = $2
-            `, [sessionId, identity.player_id]);
-                await appendSystemMessage(sessionId, `⚡ A sabotage wave just hit the code. Something changed...`);
-                await appendImposterMessage(sessionId, `Sabotage applied: ${mutation.description}.`);
-                await query(`INSERT INTO session_sabotage_log (id, session_id, player_id, mutation_name, description, poisoned)
-             VALUES ($1, $2, $3, $4, $5, FALSE)`, [createId(), sessionId, identity.player_id, mutation.name, mutation.description]);
-                app.log.info({ sessionId, mutation: mutation.name, description: mutation.description }, "Sabotage applied");
-                const remainingCharges = sessionMeta.sabotage_charges - 1;
-                if (remainingCharges <= 0) {
-                    await finishGame(sessionId, "imposter", "Imposter exhausted all sabotage charges before civilians could stop them. 🔪");
-                    return;
                 }
             }
             await publishSession(sessionId);
@@ -948,6 +914,17 @@ app.get("/ws/sessions/:sessionId", { websocket: true }, async (socket, request) 
     }));
 });
 /* ────────── REST: Leaderboard ────────── */
+/* ────────── REST: Player Achievements ────────── */
+app.get("/api/players/:playerId/achievements", async (request) => {
+    const { getPlayerAchievements } = await import("./services/achievements.js");
+    const achievements = await getPlayerAchievements(request.params.playerId);
+    return { achievements };
+});
+/* ────────── REST: Available Achievements ────────── */
+app.get("/api/achievements", async () => {
+    const result = await query(`SELECT slug, title, description, icon, tone FROM achievements ORDER BY slug ASC`);
+    return { achievements: result.rows };
+});
 app.get("/api/leaderboard", async () => {
     const [leaderboardResult, hallOfFameResult] = await Promise.all([
         query(`
@@ -976,6 +953,9 @@ app.post("/api/lobbies", {
                 hostName: { type: "string", minLength: 2, maxLength: 24 },
                 mode: { type: "string" },
                 maxPlayers: { type: "integer", minimum: 4, maximum: 5 },
+                isPrivate: { type: "boolean" },
+                password: { type: "string", maxLength: 64 },
+                difficulty: { type: "string", enum: ["easy", "medium", "hard", "mixed"] },
             },
         },
     },
@@ -985,11 +965,17 @@ app.post("/api/lobbies", {
     const code = createCode();
     const mode = request.body.mode ?? "standard";
     const maxPlayers = request.body.maxPlayers ?? 4;
+    const isPrivate = request.body.isPrivate === true;
+    const difficulty = request.body.difficulty ?? "medium";
+    let passwordHash = null;
+    if (isPrivate && request.body.password && request.body.password.length > 0) {
+        passwordHash = await hashPassword(request.body.password);
+    }
     await inTransaction(async (client) => {
         await client.query(`
-          INSERT INTO lobbies (id, code, mode, max_players, status, host_player_id)
-          VALUES ($1, $2, $3, $4, 'waiting', $5)
-        `, [lobbyId, code, mode, maxPlayers, playerId]);
+          INSERT INTO lobbies (id, code, mode, max_players, status, host_player_id, is_private, password_hash, difficulty)
+          VALUES ($1, $2, $3, $4, 'waiting', $5, $6, $7, $8)
+        `, [lobbyId, code, mode, maxPlayers, playerId, isPrivate, passwordHash, difficulty]);
         await client.query(`
           INSERT INTO lobby_players (id, lobby_id, name, title, color, is_ready, is_host)
           VALUES ($1, $2, $3, $4, $5, true, true)
@@ -1018,6 +1004,7 @@ app.post("/api/lobbies/:code/join", {
             required: ["playerName"],
             properties: {
                 playerName: { type: "string", minLength: 2, maxLength: 24 },
+                password: { type: "string", maxLength: 64 },
             },
         },
     },
@@ -1034,6 +1021,14 @@ app.post("/api/lobbies/:code/join", {
     if (lobby.players.length >= lobby.maxPlayers) {
         reply.code(409);
         return { message: "Lobby sudah penuh." };
+    }
+    if (lobby.isPrivate) {
+        const submitted = request.body.password ?? "";
+        const ok = await verifyLobbyPassword(lobby.id, submitted);
+        if (!ok) {
+            reply.code(401);
+            return { message: "Password salah." };
+        }
     }
     const playerId = createId();
     const paletteIndex = lobby.players.length % COLOR_PALETTE.length;
@@ -1248,6 +1243,10 @@ async function start() {
         sessionTickInterval = setInterval(() => {
             void tickActiveSessions();
         }, 1000);
+        // AFK sweeper — every 30s, mark players forfeited if disconnected > 2 minutes during playing.
+        setInterval(() => {
+            void sweepAfkPlayers().catch((err) => app.log.warn({ err }, "AFK sweeper failed"));
+        }, 30000);
         await app.listen({
             host: config.host,
             port: config.port,

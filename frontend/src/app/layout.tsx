@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Press_Start_2P } from "next/font/google";
 import "./globals.css";
+import { SoundProvider } from "@/lib/sound-provider";
+import { ToastProvider } from "@/lib/toast-provider";
 
 const pixelFont = Press_Start_2P({
   variable: "--font-pixel",
@@ -30,7 +32,11 @@ export default function RootLayout({
       lang="id"
       className={`${pixelFont.variable} ${plexMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <SoundProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </SoundProvider>
+      </body>
     </html>
   );
 }

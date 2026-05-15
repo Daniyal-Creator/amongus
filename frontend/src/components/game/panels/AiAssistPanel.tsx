@@ -18,6 +18,7 @@ export function AiAssistPanel({ sessionId, playerId, phase, onGhostHint }: AiAss
 
 function AiAssistPanelInner({ sessionId, playerId, onGhostHint }: { sessionId: string; playerId: string; onGhostHint?: () => void }) {
   const {
+    suggestion,
     poisonResult,
     loading,
     error,
@@ -68,6 +69,12 @@ function AiAssistPanelInner({ sessionId, playerId, onGhostHint }: { sessionId: s
       {error ? (
         <div className="pixel-panel-result mt-3 px-3 py-2 border-l-4 border-l-[var(--status-error-border)]">
           <p className="pixel-small text-[#9f2c27]">{error}</p>
+        </div>
+      ) : null}
+
+      {suggestion ? (
+        <div className="pixel-panel-result mt-3 px-3 py-2 border-l-4 border-l-[var(--status-success-border)]">
+          <p className="pixel-small text-[#5c4427]">{suggestion.suggestion}</p>
         </div>
       ) : null}
 

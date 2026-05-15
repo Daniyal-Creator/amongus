@@ -13,6 +13,8 @@ import { registerSecurityRoutes } from "./routes/security-routes.js";
 import { registerSandboxRoutes } from "./routes/sandbox-routes.js";
 import { registerLeaderboardRoutes } from "./routes/leaderboard-routes.js";
 import { appendSystemMessage } from "./services/session-effects.js";
+import { hashPassword, verifyLobbyPassword } from "./services/lobby-password.js";
+import { evaluateAchievements } from "./services/achievements.js";
 
 /* ────────────── Constants ────────────── */
 
@@ -183,9 +185,11 @@ async function getLobbyByCode(code: string) {
     max_players: number;
     status: string;
     host_player_id: string;
+    is_private: boolean;
+    difficulty: string;
   }>(
     `
-      SELECT id, code, mode, max_players, status, host_player_id
+      SELECT id, code, mode, max_players, status, host_player_id, is_private, difficulty
       FROM lobbies
       WHERE code = $1
     `,
@@ -214,6 +218,8 @@ async function getLobbyByCode(code: string) {
     maxPlayers: lobby.max_players,
     status: lobby.status,
     hostPlayerId: lobby.host_player_id,
+    isPrivate: lobby.is_private,
+    difficulty: lobby.difficulty,
     players: playersResult.rows.map(normalizePlayer),
   };
 }
@@ -242,7 +248,10 @@ async function getLobbySnapshot(code: string) {
   return {
     host: lobby.players.find((player) => player.isHost)?.name ?? "-",
     status: lobby.status,
+    code: lobby.code,
     maxPlayers: lobby.maxPlayers,
+    isPrivate: lobby.isPrivate,
+    difficulty: lobby.difficulty,
     players: lobby.players,
     categories,
     activeSessionId,
@@ -290,9 +299,10 @@ async function getSessionSnapshot(sessionId: string, playerId?: string) {
       color: string;
       role: "civilian" | "imposter";
       status: string;
+      disconnected_at: Date | null;
     }>(
       `
-        SELECT lp.id, lp.name, lp.color, sp.role, sp.status
+        SELECT lp.id, lp.name, lp.color, sp.role, sp.status, sp.disconnected_at
         FROM session_players sp
         JOIN lobby_players lp ON lp.id = sp.player_id
         WHERE sp.session_id = $1
@@ -438,6 +448,7 @@ async function getSessionSnapshot(sessionId: string, playerId?: string) {
     players: players.map((player) => ({
       ...player,
       meetingVotes: meetingVoteCount.get(player.id) ?? 0,
+      isDisconnected: player.disconnected_at !== null && player.status !== "left game" && player.status !== "ejected after meeting",
     })),
     objectives: civilianObjectives,
     imposterObjectives: imposterObjectives,
@@ -675,6 +686,24 @@ export async function finishGame(
     }
   }
 
+  // Achievement evaluation. Awards persisted; broadcast to players via system messages.
+  try {
+    const awards = await evaluateAchievements({ sessionId, winnerTeam });
+    for (const award of awards) {
+      const playerResult = await query<{ name: string }>(
+        `SELECT name FROM lobby_players WHERE id = $1`,
+        [award.playerId],
+      );
+      const playerName = playerResult.rows[0]?.name ?? "Player";
+      await appendSystemMessage(
+        sessionId,
+        `${award.icon} ${playerName} earned achievement: ${award.title}`,
+      );
+    }
+  } catch (err) {
+    app.log.warn({ err, sessionId }, "achievement evaluation failed");
+  }
+
   await publishSession(sessionId);
 }
 
@@ -803,6 +832,64 @@ async function resolveCategoryVote(sessionId: string) {
   await publishSession(sessionId);
 }
 
+/**
+ * Periodic sweep: any player disconnected for more than AFK_GRACE_MS in an
+ * actively-playing session is forfeited (status = 'left game'). If this leaves
+ * the session unplayable (no civilians left, or no imposter), end the game.
+ */
+const AFK_GRACE_MS = 120_000; // 2 minutes
+async function sweepAfkPlayers() {
+  const stale = await query<{ session_id: string; player_id: string; role: string }>(
+    `SELECT sp.session_id, sp.player_id, sp.role
+     FROM session_players sp
+     JOIN sessions s ON s.id = sp.session_id
+     WHERE sp.disconnected_at IS NOT NULL
+       AND sp.status NOT IN ('left game', 'ejected after meeting')
+       AND s.phase IN ('category', 'playing', 'meeting')
+       AND sp.disconnected_at < NOW() - INTERVAL '${AFK_GRACE_MS / 1000} seconds'`,
+  );
+  if (stale.rows.length === 0) return;
+
+  const affectedSessions = new Set<string>();
+  for (const row of stale.rows) {
+    await query(
+      `UPDATE session_players SET status = 'left game' WHERE session_id = $1 AND player_id = $2`,
+      [row.session_id, row.player_id],
+    );
+    affectedSessions.add(row.session_id);
+    const playerRow = await query<{ name: string }>(
+      `SELECT name FROM lobby_players WHERE id = $1`,
+      [row.player_id],
+    );
+    const name = playerRow.rows[0]?.name ?? "Player";
+    await appendSystemMessage(row.session_id, `🚪 ${name} left (AFK timeout).`);
+  }
+
+  // After sweeping, check win conditions per affected session.
+  for (const sessionId of affectedSessions) {
+    const counts = await query<{ role: string; alive: string }>(
+      `SELECT role, COUNT(*)::text AS alive
+       FROM session_players
+       WHERE session_id = $1
+         AND status NOT IN ('left game', 'ejected after meeting')
+       GROUP BY role`,
+      [sessionId],
+    );
+    const alive = new Map<string, number>();
+    for (const r of counts.rows) alive.set(r.role, Number(r.alive));
+    const civAlive = alive.get("civilian") ?? 0;
+    const impAlive = alive.get("imposter") ?? 0;
+
+    if (impAlive === 0 && civAlive > 0) {
+      await finishGame(sessionId, "civilian", "Imposter left the game. Civilians win by default.");
+    } else if (civAlive <= 1 && impAlive > 0) {
+      await finishGame(sessionId, "imposter", "Too many civilians AFK. Imposter wins by default.");
+    } else {
+      await publishSession(sessionId);
+    }
+  }
+}
+
 async function tickActiveSessions() {
   const sessionsResult = await query<{
     id: string;
@@ -902,8 +989,32 @@ app.get<{
     realtimeSocket.playerId = request.query.playerId;
     registerSocket(sessionSubscribers, sessionId, realtimeSocket);
 
+    // Reconnect tracking: clear disconnected_at, refresh last_seen_at.
+    if (realtimeSocket.playerId) {
+      try {
+        await query(
+          `UPDATE session_players
+           SET last_seen_at = NOW(), disconnected_at = NULL
+           WHERE session_id = $1 AND player_id = $2`,
+          [sessionId, realtimeSocket.playerId],
+        );
+      } catch (err) {
+        app.log.warn({ err }, "failed to mark player as connected");
+      }
+    }
+
     realtimeSocket.on("close", () => {
-      if (realtimeSocket.playerId) clearCursor(sessionId, realtimeSocket.playerId);
+      if (realtimeSocket.playerId) {
+        clearCursor(sessionId, realtimeSocket.playerId);
+        // Stamp disconnected_at so AFK sweeper can decide whether to forfeit.
+        const playerId = realtimeSocket.playerId;
+        query(
+          `UPDATE session_players
+           SET disconnected_at = NOW()
+           WHERE session_id = $1 AND player_id = $2`,
+          [sessionId, playerId],
+        ).catch((err) => app.log.warn({ err }, "failed to mark player as disconnected"));
+      }
     });
 
     realtimeSocket.on("message", async (payload) => {
@@ -1162,75 +1273,100 @@ app.get<{
             }
 
             const ranked = [...counts.entries()].sort((left, right) => right[1] - left[1]);
-            const winnerId = ranked[0]?.[0] ?? null;
-            const ejectedName =
-              playerNames.rows.find((player) => player.id === winnerId)?.name ?? "unknown";
-            const ejectedRole =
-              winnerId
-                ? (
-                    await query<{ role: "civilian" | "imposter" }>(
-                      `
-                        SELECT role
-                        FROM session_players
-                        WHERE session_id = $1 AND player_id = $2
-                      `,
-                      [sessionId, winnerId],
-                    )
-                  ).rows[0]?.role ?? null
-                : null;
+            const topVoteCount = ranked[0]?.[1] ?? 0;
+            const tiedTop = ranked.filter(([, c]) => c === topVoteCount).map(([id]) => id);
 
-            if (winnerId) {
+            // ── Tie-breaker: if 2+ players tied at the top, no one is ejected ──
+            if (tiedTop.length > 1) {
               await query(
                 `
-                  UPDATE session_players
-                  SET status = 'ejected after meeting'
-                  WHERE session_id = $1 AND player_id = $2
+                  UPDATE sessions
+                  SET phase = 'playing',
+                      meeting_started_by = NULL,
+                      meeting_snippet = ''
+                  WHERE id = $1
                 `,
-                [sessionId, winnerId],
+                [sessionId],
               );
-            }
-
-            await query(
-              `
-                UPDATE sessions
-                SET phase = 'playing',
-                    meeting_started_by = NULL,
-                    meeting_snippet = ''
-                WHERE id = $1
-              `,
-              [sessionId],
-            );
-            await query(`DELETE FROM session_meeting_votes WHERE session_id = $1`, [sessionId]);
-            await appendSystemMessage(sessionId, `🗳️ ${ejectedName} received the most votes and was ejected.`);
-
-            if (ejectedRole === "imposter") {
-              await finishGame(
+              await query(`DELETE FROM session_meeting_votes WHERE session_id = $1`, [sessionId]);
+              const tiedNames = tiedTop
+                .map((id) => playerNames.rows.find((p) => p.id === id)?.name ?? "unknown")
+                .join(" & ");
+              await appendSystemMessage(
                 sessionId,
-                "civilian",
-                `${ejectedName} was the impostor! Civilian team wins. 🎉`,
+                `⚖️ Vote tied between ${tiedNames}. No one ejected this round.`,
               );
-              return;
-            }
+            } else {
+              const winnerId = ranked[0]?.[0] ?? null;
+              const ejectedName =
+                playerNames.rows.find((player) => player.id === winnerId)?.name ?? "unknown";
+              const ejectedRole =
+                winnerId
+                  ? (
+                      await query<{ role: "civilian" | "imposter" }>(
+                        `
+                          SELECT role
+                          FROM session_players
+                          WHERE session_id = $1 AND player_id = $2
+                        `,
+                        [sessionId, winnerId],
+                      )
+                    ).rows[0]?.role ?? null
+                  : null;
 
-            // Check if all civilians are ejected (imposter wins)
-            const remainingCivilians = await query<{ count: string }>(
-              `
-                SELECT COUNT(*)::text AS count
-                FROM session_players
-                WHERE session_id = $1
-                  AND role = 'civilian'
-                  AND status != 'ejected after meeting'
-              `,
-              [sessionId],
-            );
+              if (winnerId) {
+                await query(
+                  `
+                    UPDATE session_players
+                    SET status = 'ejected after meeting'
+                    WHERE session_id = $1 AND player_id = $2
+                  `,
+                  [sessionId, winnerId],
+                );
+              }
 
-            if (Number(remainingCivilians.rows[0]?.count ?? "0") <= 1) {
-              await finishGame(
-                sessionId,
-                "imposter",
-                "Too many civilians were ejected. Imposter wins! 🔪",
+              await query(
+                `
+                  UPDATE sessions
+                  SET phase = 'playing',
+                      meeting_started_by = NULL,
+                      meeting_snippet = ''
+                  WHERE id = $1
+                `,
+                [sessionId],
               );
-              return;
+              await query(`DELETE FROM session_meeting_votes WHERE session_id = $1`, [sessionId]);
+              await appendSystemMessage(sessionId, `🗳️ ${ejectedName} received the most votes and was ejected.`);
+
+              if (ejectedRole === "imposter") {
+                await finishGame(
+                  sessionId,
+                  "civilian",
+                  `${ejectedName} was the impostor! Civilian team wins. 🎉`,
+                );
+                return;
+              }
+
+              // Check if all civilians are ejected (imposter wins)
+              const remainingCivilians = await query<{ count: string }>(
+                `
+                  SELECT COUNT(*)::text AS count
+                  FROM session_players
+                  WHERE session_id = $1
+                    AND role = 'civilian'
+                    AND status != 'ejected after meeting'
+                `,
+                [sessionId],
+              );
+
+              if (Number(remainingCivilians.rows[0]?.count ?? "0") <= 1) {
+                await finishGame(
+                  sessionId,
+                  "imposter",
+                  "Too many civilians were ejected. Imposter wins! 🔪",
+                );
+                return;
+              }
             }
           }
         }
@@ -1252,6 +1388,30 @@ app.get<{
 );
 
 /* ────────── REST: Leaderboard ────────── */
+
+/* ────────── REST: Player Achievements ────────── */
+
+app.get<{ Params: { playerId: string } }>(
+  "/api/players/:playerId/achievements",
+  async (request) => {
+    const { getPlayerAchievements } = await import("./services/achievements.js");
+    const achievements = await getPlayerAchievements(request.params.playerId);
+    return { achievements };
+  },
+);
+
+/* ────────── REST: Available Achievements ────────── */
+
+app.get("/api/achievements", async () => {
+  const result = await query<{
+    slug: string;
+    title: string;
+    description: string;
+    icon: string;
+    tone: string;
+  }>(`SELECT slug, title, description, icon, tone FROM achievements ORDER BY slug ASC`);
+  return { achievements: result.rows };
+});
 
 app.get("/api/leaderboard", async () => {
   const [leaderboardResult, hallOfFameResult] = await Promise.all([
@@ -1294,6 +1454,9 @@ app.post<{
     hostName: string;
     mode?: string;
     maxPlayers?: number;
+    isPrivate?: boolean;
+    password?: string;
+    difficulty?: string;
   };
 }>(
   "/api/lobbies",
@@ -1306,6 +1469,9 @@ app.post<{
           hostName: { type: "string", minLength: 2, maxLength: 24 },
           mode: { type: "string" },
           maxPlayers: { type: "integer", minimum: 4, maximum: 5 },
+          isPrivate: { type: "boolean" },
+          password: { type: "string", maxLength: 64 },
+          difficulty: { type: "string", enum: ["easy", "medium", "hard", "mixed"] },
         },
       },
     },
@@ -1316,14 +1482,21 @@ app.post<{
     const code = createCode();
     const mode = request.body.mode ?? "standard";
     const maxPlayers = request.body.maxPlayers ?? 4;
+    const isPrivate = request.body.isPrivate === true;
+    const difficulty = request.body.difficulty ?? "medium";
+
+    let passwordHash: string | null = null;
+    if (isPrivate && request.body.password && request.body.password.length > 0) {
+      passwordHash = await hashPassword(request.body.password);
+    }
 
     await inTransaction(async (client) => {
       await client.query(
         `
-          INSERT INTO lobbies (id, code, mode, max_players, status, host_player_id)
-          VALUES ($1, $2, $3, $4, 'waiting', $5)
+          INSERT INTO lobbies (id, code, mode, max_players, status, host_player_id, is_private, password_hash, difficulty)
+          VALUES ($1, $2, $3, $4, 'waiting', $5, $6, $7, $8)
         `,
-        [lobbyId, code, mode, maxPlayers, playerId],
+        [lobbyId, code, mode, maxPlayers, playerId, isPrivate, passwordHash, difficulty],
       );
 
       await client.query(
@@ -1349,7 +1522,7 @@ app.post<{
 
 app.post<{
   Params: { code: string };
-  Body: { playerName: string };
+  Body: { playerName: string; password?: string };
 }>(
   "/api/lobbies/:code/join",
   {
@@ -1366,6 +1539,7 @@ app.post<{
         required: ["playerName"],
         properties: {
           playerName: { type: "string", minLength: 2, maxLength: 24 },
+          password: { type: "string", maxLength: 64 },
         },
       },
     },
@@ -1385,6 +1559,15 @@ app.post<{
     if (lobby.players.length >= lobby.maxPlayers) {
       reply.code(409);
       return { message: "Lobby sudah penuh." };
+    }
+
+    if (lobby.isPrivate) {
+      const submitted = request.body.password ?? "";
+      const ok = await verifyLobbyPassword(lobby.id, submitted);
+      if (!ok) {
+        reply.code(401);
+        return { message: "Password salah." };
+      }
     }
 
     const playerId = createId();
@@ -1687,6 +1870,12 @@ async function start() {
     sessionTickInterval = setInterval(() => {
       void tickActiveSessions();
     }, 1000);
+    // AFK sweeper — every 30s, mark players forfeited if disconnected > 2 minutes during playing.
+    setInterval(() => {
+      void sweepAfkPlayers().catch((err) =>
+        app.log.warn({ err }, "AFK sweeper failed"),
+      );
+    }, 30000);
     await app.listen({
       host: config.host,
       port: config.port,
