@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Megaphone, Shield, Sword, Send } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { connectSession, getSession, type SessionRealtimeMessage } from "@/lib/api";
@@ -19,10 +19,11 @@ import { SoundToggle } from "@/components/ui/SoundToggle";
 import { useSounds } from "@/lib/sound-provider";
 import { useToast } from "@/lib/toast-provider";
 import confetti from "canvas-confetti";
+import { shouldRunFrame } from "@/lib/frame-throttle";
 
 const CodeEditor = dynamic(
   () => import("@/components/editor/CodeEditor").then((m) => m.CodeEditor),
-  { ssr: false, loading: () => <div className="h-full bg-[#1f2033] animate-pulse" /> },
+  { ssr: false, loading: () => <div className="h-full bg-[#1f2033] motion-safe:animate-pulse" /> },
 );
 
 type GameSessionClientProps = {
@@ -52,6 +53,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const seenAchievementsRef = useRef<Set<string>>(new Set());
   const lastTickRef = useRef<number | null>(null);
   const winnerCelebratedRef = useRef(false);
+  const shouldReduceMotion = useReducedMotion();
 
   const handleGhostHint = useCallback(() => {
     setGhostToast(true);
@@ -138,12 +140,13 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       sessionConnectionRef.current?.close();
       sessionConnectionRef.current = null;
     };
-  }, [sessionId]);
+  }, [sessionId, toast]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    meetingChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [snapshot?.chatMessages.length, snapshot?.imposterFeed?.length, snapshot?.phase]);
+    const behavior: ScrollBehavior = shouldReduceMotion ? "auto" : "smooth";
+    chatEndRef.current?.scrollIntoView({ behavior });
+    meetingChatEndRef.current?.scrollIntoView({ behavior });
+  }, [shouldReduceMotion, snapshot?.chatMessages.length, snapshot?.imposterFeed?.length, snapshot?.phase]);
 
   useEffect(() => {
     if (snapshot?.phase === "playing" && !hasShownRoleRef.current) {
@@ -216,9 +219,19 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
         const myTeam: "civilian" | "imposter" = snapshot.currentUser.role === "civilian" ? "civilian" : "imposter";
         const won = snapshot.result.winnerTeam === myTeam;
         playSound(won ? "victory" : "defeat");
-        if (won) {
+        if (won && !shouldReduceMotion) {
           const end = Date.now() + 1500;
+          let lastFrameAt = 0;
           const tick = () => {
+            if (Date.now() >= end) {
+              return;
+            }
+            const now = performance.now();
+            if (!shouldRunFrame(now, lastFrameAt, 60)) {
+              requestAnimationFrame(tick);
+              return;
+            }
+            lastFrameAt = now;
             confetti({
               particleCount: 5,
               angle: 60,
@@ -233,7 +246,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
               origin: { x: 1, y: 0.7 },
               colors: ["#a2e858", "#ffcf40", "#74d6ff"],
             });
-            if (Date.now() < end) requestAnimationFrame(tick);
+            requestAnimationFrame(tick);
           };
           tick();
         }
@@ -286,7 +299,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot]);
+  }, [snapshot, shouldReduceMotion]);
 
   if (!snapshot && !loadError) {
     return (
@@ -390,9 +403,9 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             {/* Right: Timer + Sound toggle */}
             <div className="flex items-center justify-center md:justify-end gap-2">
               <SoundToggle />
-              <div className={`rounded-xl border px-5 py-2 text-3xl font-bold tracking-widest transition-all duration-300 ${
+              <div className={`rounded-xl border px-5 py-2 text-3xl font-bold tracking-widest transition-transform duration-300 ${
                 timeSeconds <= 15
-                  ? "bg-red-500/20 border-red-500/50 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)] animate-emergency-pulse"
+                  ? "bg-red-500/20 border-red-500/50 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)] motion-safe:animate-emergency-pulse"
                   : "bg-white/10 border-white/20 text-white"
               }`}>
                 {snapshot.timeRemaining}
@@ -438,7 +451,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                         <motion.span
                           aria-hidden
                           animate={{ opacity: [1, 0.3, 1] }}
-                          transition={{ duration: 1.2, repeat: Infinity }}
+                          transition={{ duration: shouldReduceMotion ? 0 : 1.2, repeat: shouldReduceMotion ? 0 : Infinity }}
                           className="w-1.5 h-1.5 rounded-full bg-red-500"
                         />
                         AFK
@@ -600,8 +613,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                   </p>
                 </div>
                 <motion.div 
-                  animate={timerIsLow ? { scale: [1, 1.15, 1] } : {}}
-                  transition={timerIsLow ? { repeat: Infinity, duration: 0.8, ease: "easeInOut" } : {}}
+                  animate={timerIsLow && !shouldReduceMotion ? { scale: [1, 1.15, 1] } : {}}
+                  transition={timerIsLow && !shouldReduceMotion ? { repeat: Infinity, duration: 0.8, ease: "easeInOut" } : {}}
                   className={`rounded-xl min-w-[90px] px-4 py-2 text-center text-3xl font-bold tracking-widest shadow-inner ${
                     timerIsLow 
                       ? "bg-red-500/20 border border-red-500/50 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]" 
@@ -615,8 +628,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {snapshot.categoryVoteOptions.map((category) => (
                   <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    whileHover={shouldReduceMotion ? undefined : { scale: 1.02 }}
+                    whileTap={shouldReduceMotion ? undefined : { scale: 0.98 }}
                     key={category.slug}
                     type="button"
                     onClick={() =>
@@ -625,7 +638,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                         categorySlug: category.slug,
                       })
                     }
-                    className={`flex flex-col px-5 py-4 text-left transition-all rounded-2xl border ${
+                    className={`flex flex-col px-5 py-4 text-left transition-transform rounded-2xl border ${
                       snapshot.currentCategoryVote === category.slug ? "bg-white/20 border-white/50 shadow-[0_0_15px_rgba(255,255,255,0.2)]" : "bg-white/5 border-white/10 hover:bg-white/10"
                     }`}
                   >
@@ -675,8 +688,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                    .filter((p) => !p.status?.includes("ejected"))
                    .map((player) => (
                      <motion.button
-                       whileHover={{ scale: 1.02, y: -2 }}
-                       whileTap={{ scale: 0.98, y: 2 }}
+                       whileHover={shouldReduceMotion ? undefined : { scale: 1.02, y: -2 }}
+                       whileTap={shouldReduceMotion ? undefined : { scale: 0.98, y: 2 }}
                        key={player.id}
                        onClick={() =>
                          sendRealtimeMessage({
@@ -684,7 +697,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                            targetPlayerId: player.id,
                          })
                        }
-                       className={`relative flex items-center gap-3 p-3 border-[4px] shadow-[4px_4px_0_0_rgba(0,0,0,0.3)] transition-all ${
+                       className={`relative flex items-center gap-3 p-3 border-[4px] shadow-[4px_4px_0_0_rgba(0,0,0,0.3)] transition-transform ${
                          snapshot.meeting.currentVoteTargetId === player.id 
                            ? "border-[#4ade80] bg-[#fff8ea]"
                            : "border-[#5c4427] bg-[#f4e4c1]"
@@ -708,7 +721,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                        </div>
                        {/* Megaphone icon for caller */}
                         {snapshot.meeting.startedBy === player.name && (
-                         <div className="absolute -top-3 -right-3 text-[#ffcf40] drop-shadow-[2px_2px_0_rgba(0,0,0,0.8)] animate-bounce">
+                         <div className="absolute -top-3 -right-3 text-[#ffcf40] drop-shadow-[2px_2px_0_rgba(0,0,0,0.8)] motion-safe:animate-bounce">
                            <Megaphone className="w-8 h-8 fill-current" />
                          </div>
                        )}
@@ -756,8 +769,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                       onChange={(event) => setChatDraft(event.target.value)}
                     />
                     <motion.button 
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      whileHover={shouldReduceMotion ? undefined : { scale: 1.05 }}
+                      whileTap={shouldReduceMotion ? undefined : { scale: 0.95 }}
                       type="submit" 
                       className="pixel-button pixel-button-primary px-4 py-2"
                     >
@@ -821,14 +834,14 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                     ? "bg-[radial-gradient(circle_at_center,#a2e85844_0%,transparent_60%)]"
                     : "bg-[radial-gradient(circle_at_center,#ff688b44_0%,transparent_60%)]"
                 }`}
-                animate={{ opacity: [0.4, 0.8, 0.4] }}
-                transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                animate={shouldReduceMotion ? { opacity: 0.5 } : { opacity: [0.4, 0.8, 0.4] }}
+                transition={shouldReduceMotion ? { duration: 0 } : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
               />
               <motion.p
                 className="pixel-title text-3xl drop-shadow-md flex items-center justify-center gap-3 relative z-10"
                 initial={{ scale: 0.6 }}
-                animate={{ scale: [0.6, 1.18, 1] }}
-                transition={{ duration: 0.7, ease: "easeOut", delay: 0.2 }}
+                animate={shouldReduceMotion ? { scale: 1 } : { scale: [0.6, 1.18, 1] }}
+                transition={{ duration: shouldReduceMotion ? 0 : 0.7, ease: "easeOut", delay: shouldReduceMotion ? 0 : 0.2 }}
               >
                 {snapshot.result.winnerTeam === "civilian" ? (
                   <Shield className="w-8 h-8 fill-[#2b4a1b] text-[#2b4a1b]" />
@@ -893,8 +906,8 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
               </div>
 
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={shouldReduceMotion ? undefined : { scale: 1.05 }}
+                whileTap={shouldReduceMotion ? undefined : { scale: 0.95 }}
                 type="button"
                 onClick={() => window.location.href = "/"}
                 className="pixel-button pixel-button-primary mt-8 text-xl px-10 py-4 shadow-[0_6px_0_0_#9a6a00] relative z-10"
@@ -935,7 +948,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
               : "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#5e0d0d] via-[#240303] to-black"
         }`}>
           {roleRevealStage === "assigning" ? (
-            <p className="pixel-title text-3xl sm:text-5xl text-white animate-pulse tracking-widest">
+            <p className="pixel-title text-3xl sm:text-5xl text-white motion-safe:animate-pulse tracking-widest">
               Assigning roles...
             </p>
           ) : (

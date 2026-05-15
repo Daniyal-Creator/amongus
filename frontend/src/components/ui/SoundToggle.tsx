@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
 import { useSounds } from "@/lib/sound-provider";
 
@@ -10,6 +10,7 @@ type SoundToggleProps = {
 
 export function SoundToggle({ className = "" }: SoundToggleProps) {
   const { muted, setMuted, play } = useSounds();
+  const shouldReduceMotion = useReducedMotion();
 
   return (
     <button
@@ -27,20 +28,20 @@ export function SoundToggle({ className = "" }: SoundToggleProps) {
         {muted ? (
           <motion.span
             key="mute"
-            initial={{ scale: 0, rotate: -45 }}
+            initial={shouldReduceMotion ? false : { scale: 0, rotate: -45 }}
             animate={{ scale: 1, rotate: 0 }}
-            exit={{ scale: 0, rotate: 45 }}
-            transition={{ type: "spring", stiffness: 380, damping: 22 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { scale: 0, rotate: 45 }}
+            transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 22 }}
           >
             <VolumeX className="w-4 h-4" />
           </motion.span>
         ) : (
           <motion.span
             key="vol"
-            initial={{ scale: 0, rotate: 45 }}
+            initial={shouldReduceMotion ? false : { scale: 0, rotate: 45 }}
             animate={{ scale: 1, rotate: 0 }}
-            exit={{ scale: 0, rotate: -45 }}
-            transition={{ type: "spring", stiffness: 380, damping: 22 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { scale: 0, rotate: -45 }}
+            transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 22 }}
           >
             <Volume2 className="w-4 h-4" />
           </motion.span>

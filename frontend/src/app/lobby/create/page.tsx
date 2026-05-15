@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { createLobby } from "@/lib/api";
 import { setLobbyPlayerId } from "@/lib/player-session";
 
@@ -17,6 +17,7 @@ export default function CreateLobbyPage() {
   const [difficulty, setDifficulty] = useState("medium");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const shouldReduceMotion = useReducedMotion();
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -109,11 +110,11 @@ export default function CreateLobbyPage() {
               {isPrivate ? (
                 <motion.label
                   key="password-field"
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="block overflow-hidden"
+                  initial={shouldReduceMotion ? false : { opacity: 0, scaleY: 0.96 }}
+                  animate={{ opacity: 1, scaleY: 1 }}
+                  exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scaleY: 0.96 }}
+                  transition={{ duration: shouldReduceMotion ? 0 : 0.18 }}
+                  className="block origin-top overflow-hidden"
                 >
                   <span className="pixel-small">Password</span>
                   <input

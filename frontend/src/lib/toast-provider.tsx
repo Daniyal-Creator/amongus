@@ -10,7 +10,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 
 export type ToastTone = "info" | "success" | "danger" | "achievement";
 
@@ -81,16 +80,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div className="fixed top-4 right-4 z-[9999] pointer-events-none flex flex-col gap-2 max-w-[360px]">
-        <AnimatePresence initial={false}>
-          {toasts.map((toast) => (
-            <motion.div
+        {toasts.map((toast) => (
+            <div
               key={toast.id}
-              layout
-              initial={{ opacity: 0, x: 80, scale: 0.9 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 80, scale: 0.85 }}
-              transition={{ type: "spring", stiffness: 320, damping: 26 }}
-              className={`pointer-events-auto border-4 px-4 py-3 ${TONE_STYLES[toast.tone]}`}
+              className={`pointer-events-auto border-4 px-4 py-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-right-8 motion-safe:duration-200 ${TONE_STYLES[toast.tone]}`}
             >
               <div className="flex items-start gap-2">
                 {toast.icon ? (
@@ -113,9 +106,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   ✕
                 </button>
               </div>
-            </motion.div>
+            </div>
           ))}
-        </AnimatePresence>
       </div>
     </ToastContext.Provider>
   );

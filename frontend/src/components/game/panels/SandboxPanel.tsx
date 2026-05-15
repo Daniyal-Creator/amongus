@@ -115,7 +115,7 @@ export function SandboxPanel({
               onClick={onPrimaryAction}
               disabled={actionDisabled}
               className={`pixel-button pixel-button-emergency shrink-0 ${
-                actionDisabled ? "opacity-60" : "animate-emergency-pulse"
+                actionDisabled ? "opacity-60" : "motion-safe:animate-emergency-pulse"
               }`}
             >
               <span className="flex items-center gap-2">

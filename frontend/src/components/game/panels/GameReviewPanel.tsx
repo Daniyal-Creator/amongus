@@ -19,7 +19,7 @@ export function GameReviewPanel({ sessionId, phase }: GameReviewPanelProps) {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-6 gap-4">
           <div className="pixel-spinner" />
-          <p className="pixel-small text-[#5c4427] animate-pulse">
+          <p className="pixel-small text-[#5c4427] motion-safe:animate-pulse">
             AI sedang menganalisis game session...
           </p>
         </div>

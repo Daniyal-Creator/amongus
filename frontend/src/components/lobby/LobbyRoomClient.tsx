@@ -1,8 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Crown, Sparkles } from "lucide-react";
 import {
   getLobby,
@@ -17,6 +18,7 @@ import { getCharacterAsset } from "@/lib/character-assets";
 import { useSounds } from "@/lib/sound-provider";
 import { useToast } from "@/lib/toast-provider";
 import { Check } from "lucide-react";
+import { useInViewport } from "@/hooks/use-in-viewport";
 
 type LobbyRoomClientProps = {
   code: string;
@@ -50,6 +52,10 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
   const [joinPassword, setJoinPassword] = useState("");
   const { play } = useSounds();
   const toast = useToast();
+  const shouldReduceMotion = useReducedMotion();
+  const { ref: playersListRef, isInViewport: playersListInViewport } = useInViewport<HTMLDivElement>({
+    disabled: shouldReduceMotion ?? false,
+  });
 
   const handleCopyCode = async () => {
     try {
@@ -214,10 +220,10 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
 
   return (
     <motion.main 
-      initial={{ opacity: 0, scale: 0.95 }}
+      initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 1.05 }}
-      transition={{ duration: 0.4 }}
+      exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 1.05 }}
+      transition={{ duration: shouldReduceMotion ? 0 : 0.4 }}
       className="sky-stage flex min-h-screen items-center justify-center px-4 py-10"
     >
       <div className="relative z-10 flex w-full max-w-xl flex-col items-center">
@@ -236,27 +242,27 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                   <button
                     type="button"
                     onClick={handleCopyCode}
-                    className="flex justify-center items-center h-[34px] w-[34px] bg-[#d6c3a1] text-[#5c4427] border-[3px] border-[#8a6b45] shadow-[inset_0_0_0_2px_#ebdcb8,2px_2px_0_0_rgba(0,0,0,0.5)] active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all cursor-pointer"
+                    className="flex justify-center items-center h-[34px] w-[34px] bg-[#d6c3a1] text-[#5c4427] border-[3px] border-[#8a6b45] shadow-[inset_0_0_0_2px_#ebdcb8,2px_2px_0_0_rgba(0,0,0,0.5)] active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-transform cursor-pointer"
                     title="Copy Code"
                   >
                     <AnimatePresence mode="wait" initial={false}>
                       {codeJustCopied ? (
                         <motion.span
                           key="check"
-                          initial={{ scale: 0, rotate: -90 }}
+                          initial={shouldReduceMotion ? false : { scale: 0, rotate: -90 }}
                           animate={{ scale: 1, rotate: 0 }}
-                          exit={{ scale: 0, rotate: 90 }}
-                          transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                          exit={shouldReduceMotion ? { opacity: 0 } : { scale: 0, rotate: 90 }}
+                          transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 18 }}
                         >
                           <Check className="w-4 h-4" />
                         </motion.span>
                       ) : (
                         <motion.span
                           key="copy"
-                          initial={{ scale: 0, rotate: 90 }}
+                          initial={shouldReduceMotion ? false : { scale: 0, rotate: 90 }}
                           animate={{ scale: 1, rotate: 0 }}
-                          exit={{ scale: 0, rotate: -90 }}
-                          transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                          exit={shouldReduceMotion ? { opacity: 0 } : { scale: 0, rotate: -90 }}
+                          transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 18 }}
                         >
                           <PixelCopyIcon />
                         </motion.span>
@@ -278,11 +284,12 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                   {snapshot?.isPrivate ? (
                     <motion.input
                       key="join-password"
-                      initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                      animate={{ opacity: 1, height: "auto", marginTop: 0 }}
-                      exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                      initial={shouldReduceMotion ? false : { opacity: 0, scaleY: 0.96 }}
+                      animate={{ opacity: 1, scaleY: 1 }}
+                      exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scaleY: 0.96 }}
+                      transition={{ duration: shouldReduceMotion ? 0 : 0.18 }}
                       type="password"
-                      className="pixel-input text-center py-3 bg-white text-black"
+                      className="pixel-input origin-top text-center py-3 bg-white text-black"
                       value={joinPassword}
                       placeholder="🔒 PASSWORD"
                       onChange={(event) => setJoinPassword(event.target.value)}
@@ -317,27 +324,27 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                 <button
                   type="button"
                   onClick={handleCopyCode}
-                  className="ml-2 flex justify-center items-center h-[34px] w-[34px] bg-[#d6c3a1] text-[#5c4427] border-[3px] border-[#8a6b45] shadow-[inset_0_0_0_2px_#ebdcb8,2px_2px_0_0_rgba(0,0,0,0.5)] active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-all cursor-pointer opacity-90 hover:opacity-100"
+                  className="ml-2 flex justify-center items-center h-[34px] w-[34px] bg-[#d6c3a1] text-[#5c4427] border-[3px] border-[#8a6b45] shadow-[inset_0_0_0_2px_#ebdcb8,2px_2px_0_0_rgba(0,0,0,0.5)] active:translate-y-[2px] active:translate-x-[2px] active:shadow-none transition-transform cursor-pointer opacity-90 hover:opacity-100"
                   title="Copy to clipboard"
                 >
                   <AnimatePresence mode="wait" initial={false}>
                     {codeJustCopied ? (
                       <motion.span
                         key="check2"
-                        initial={{ scale: 0, rotate: -90 }}
+                        initial={shouldReduceMotion ? false : { scale: 0, rotate: -90 }}
                         animate={{ scale: 1, rotate: 0 }}
-                        exit={{ scale: 0, rotate: 90 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                        exit={shouldReduceMotion ? { opacity: 0 } : { scale: 0, rotate: 90 }}
+                        transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 18 }}
                       >
                         <Check className="w-4 h-4" />
                       </motion.span>
                     ) : (
                       <motion.span
                         key="copy2"
-                        initial={{ scale: 0, rotate: 90 }}
+                        initial={shouldReduceMotion ? false : { scale: 0, rotate: 90 }}
                         animate={{ scale: 1, rotate: 0 }}
-                        exit={{ scale: 0, rotate: -90 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                        exit={shouldReduceMotion ? { opacity: 0 } : { scale: 0, rotate: -90 }}
+                        transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 400, damping: 18 }}
                       >
                         <PixelCopyIcon />
                       </motion.span>
@@ -359,24 +366,29 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                 ) : null}
               </div>
 
-              <div className="space-y-3 min-h-[160px]">
+              <div ref={playersListRef} className="space-y-3 min-h-[160px]">
                 {players.length === 0 ? (
                   <div className="flex h-full items-center justify-center">
-                    <p className="pixel-small text-center text-white/60 animate-pulse">Waiting for players...</p>
+                    <p className="pixel-small text-center text-white/60 motion-safe:animate-pulse">Waiting for players...</p>
                   </div>
                 ) : null}
                 {players.map((player) => (
                   <div
                     key={player.id}
-                    className="flex items-stretch gap-2 animate-in fade-in duration-200"
+                    className={`flex items-stretch gap-2 ${
+                      playersListInViewport ? "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200" : "motion-safe:opacity-0"
+                    }`}
                   >
                     {/* Left: Avatar Box */}
                     <div className="w-[72px] h-[72px] flex items-center justify-center border-[3px] border-[#5c4427] bg-[#8a6b45] shadow-[inset_0_0_8px_rgba(0,0,0,0.3)] shrink-0 relative">
-                      <img 
+                      <Image
                         src={getCharacterAsset(player.id)} 
                         alt={`Character for ${player.name}`}
+                        width={52}
+                        height={52}
                         style={{ imageRendering: "pixelated" }}
                         className="w-[52px] h-[52px] object-contain drop-shadow-md"
+                        unoptimized
                       />
                       <div className="absolute top-1 left-1 w-2 h-2 border-[1px] border-black/50 shadow-sm" style={{ backgroundColor: player.color }} title="Team Color" />
                     </div>
@@ -444,7 +456,7 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                       disabled={!allNonHostReady || isBusy}
                       className={`pixel-button w-full sm:w-auto text-xl py-3 font-bold tracking-wider ${
                         allNonHostReady
-                          ? "pixel-button-primary animate-bounce shadow-[0_0_15px_rgba(240,169,46,0.6)]"
+                          ? "pixel-button-primary motion-safe:animate-bounce shadow-[0_0_15px_rgba(240,169,46,0.6)]"
                           : "opacity-60 cursor-not-allowed bg-[#7a6f5e] shadow-none border-[#4f4435]"
                       }`}
                     >

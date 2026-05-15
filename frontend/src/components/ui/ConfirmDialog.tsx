@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect } from "react";
 
 type ConfirmDialogProps = {
@@ -30,6 +30,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   // Close on Escape key.
   useEffect(() => {
     if (!open) return;
@@ -46,19 +48,19 @@ export function ConfirmDialog({
       {open ? (
         <motion.div
           key="backdrop"
-          initial={{ opacity: 0 }}
+          initial={shouldReduceMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
           className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 p-4"
           onClick={onCancel}
         >
           <motion.div
             key="dialog"
-            initial={{ scale: 0.85, y: 30, opacity: 0 }}
+            initial={shouldReduceMotion ? false : { scale: 0.85, y: 30, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
-            exit={{ scale: 0.85, y: 30, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 380, damping: 28 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { scale: 0.85, y: 30, opacity: 0 }}
+            transition={shouldReduceMotion ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 28 }}
             onClick={(e) => e.stopPropagation()}
             className="bg-[#fff8ea] border-4 border-[var(--brown)] max-w-md w-full p-6 shadow-[0_8px_0_#5c4427]"
           >

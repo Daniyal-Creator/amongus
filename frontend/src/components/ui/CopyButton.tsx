@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useSounds } from "@/lib/sound-provider";
@@ -15,6 +15,7 @@ type CopyButtonProps = {
 export function CopyButton({ value, label, className = "", size = "md" }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const { play } = useSounds();
+  const shouldReduceMotion = useReducedMotion();
 
   const handleCopy = useCallback(async () => {
     try {
@@ -61,10 +62,10 @@ export function CopyButton({ value, label, className = "", size = "md" }: CopyBu
           {copied ? (
             <motion.span
               key="check"
-              initial={{ scale: 0, opacity: 0 }}
+              initial={shouldReduceMotion ? false : { scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ duration: 0.15 }}
+              exit={shouldReduceMotion ? { opacity: 0 } : { scale: 0, opacity: 0 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
               className="absolute inset-0 flex items-center justify-center"
             >
               <Check className={iconSize} />
@@ -72,10 +73,10 @@ export function CopyButton({ value, label, className = "", size = "md" }: CopyBu
           ) : (
             <motion.span
               key="copy"
-              initial={{ scale: 0, opacity: 0 }}
+              initial={shouldReduceMotion ? false : { scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ duration: 0.15 }}
+              exit={shouldReduceMotion ? { opacity: 0 } : { scale: 0, opacity: 0 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
               className="absolute inset-0 flex items-center justify-center"
             >
               <Copy className={iconSize} />
@@ -86,10 +87,10 @@ export function CopyButton({ value, label, className = "", size = "md" }: CopyBu
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
           key={copied ? "copied" : "copy-text"}
-          initial={{ y: 6, opacity: 0 }}
+          initial={shouldReduceMotion ? false : { y: 6, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -6, opacity: 0 }}
-          transition={{ duration: 0.15 }}
+          exit={shouldReduceMotion ? { opacity: 0 } : { y: -6, opacity: 0 }}
+          transition={{ duration: shouldReduceMotion ? 0 : 0.15 }}
         >
           {copied ? "COPIED!" : label ?? "COPY"}
         </motion.span>

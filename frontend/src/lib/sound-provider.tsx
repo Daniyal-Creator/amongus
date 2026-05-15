@@ -55,19 +55,22 @@ export function SoundProvider({ children }: { children: ReactNode }) {
 
   // Hydrate persisted preferences after mount.
   useEffect(() => {
-    try {
-      const m = localStorage.getItem(STORAGE_KEY_MUTED);
-      if (m === "1") setMutedState(true);
-      const v = localStorage.getItem(STORAGE_KEY_VOLUME);
-      if (v) {
-        const parsed = Number(v);
-        if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 1) {
-          setVolumeState(parsed);
+    const timer = window.setTimeout(() => {
+      try {
+        const m = localStorage.getItem(STORAGE_KEY_MUTED);
+        if (m === "1") setMutedState(true);
+        const v = localStorage.getItem(STORAGE_KEY_VOLUME);
+        if (v) {
+          const parsed = Number(v);
+          if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+            setVolumeState(parsed);
+          }
         }
+      } catch {
+        // ignore (private mode etc.)
       }
-    } catch {
-      // ignore (private mode etc.)
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const setMuted = useCallback((next: boolean) => {

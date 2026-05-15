@@ -3,7 +3,6 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 
 export function HomeClient() {
   const router = useRouter();
@@ -21,12 +20,8 @@ export function HomeClient() {
   }
 
   return (
-    <motion.main 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.5 }}
-      className="sky-stage flex items-center justify-center px-4 py-10"
+    <main
+      className="sky-stage flex items-center justify-center px-4 py-10 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
     >
       <div className="relative z-10 flex w-full max-w-3xl flex-col items-center">
         <div className="pixel-logo text-center">
@@ -40,18 +35,13 @@ export function HomeClient() {
         </div>
 
         <div className="mt-16 w-full max-w-[520px]">
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.5, type: "spring", bounce: 0.5 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="w-full"
+          <div
+            className="w-full motion-safe:transition-transform motion-safe:hover:scale-[1.05] motion-safe:active:scale-95"
           >
             <Link href="/lobby/create" className="pixel-button pixel-button-primary w-full text-2xl py-6 flex justify-center mb-6 font-bold tracking-widest border-[8px] sm:border-[12px] shadow-[0_8px_0_0_#9a6a00,0_12px_10px_rgba(0,0,0,0.4)] hover:brightness-110 hover:-translate-y-1 transition-transform">
               CREATE GAME
             </Link>
-          </motion.div>
+          </div>
 
           <form
             onSubmit={handleJoin}
@@ -84,6 +74,6 @@ export function HomeClient() {
           </Link>
         </div>
       </div>
-    </motion.main>
+    </main>
   );
 }
