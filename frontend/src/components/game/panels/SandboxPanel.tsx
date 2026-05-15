@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { useSandbox } from "@/hooks/use-sandbox";
 import { useSounds } from "@/lib/sound-provider";
 import type { GameSnapshot, SandboxRunResponse } from "@/types";
@@ -33,21 +34,59 @@ export function SandboxPanel({
   const { results, loading, error, execute, reset } = useSandbox(sessionId, playerId);
   const { play: playSound } = useSounds();
 
+  // Track how many tasks/tests passed on the PREVIOUS run (-1 = no run yet).
+  // This lets us detect progress: if the count increased we play success even
+  // when there are still failures, so the player gets positive feedback for
+  // each fix without hearing success + fail at the same time.
+  const prevPassedRef = useRef<number>(-1);
+
   const actionDisabled = phase !== "playing";
 
   async function handleExecute() {
     const response = await execute();
     if (!response) return; // network error — already shown in error state
 
+    const prev = prevPassedRef.current;
+
     if (isImposterResponse(response)) {
-      // Imposter: success = all sabotage tasks validated
-      const allDone = response.completed === response.total;
-      playSound(allDone ? "success" : "fail");
+      const current = response.completed;
+      const total = response.total;
+
+      if (current === total) {
+        // All tasks validated — full success
+        playSound("success");
+      } else if (prev >= 0 && current > prev) {
+        // Made progress (≥1 new task validated) — partial success, no fail sound
+        playSound("success");
+      } else {
+        // First run with failures, or no improvement
+        playSound("fail");
+      }
+
+      prevPassedRef.current = current;
     } else {
-      // Civilian: success = all tests passed
-      const allPassed = response.passed === response.total;
-      playSound(allPassed ? "success" : "fail");
+      const current = response.passed;
+      const total = response.total;
+
+      if (current === total) {
+        // All tests passed — full success
+        playSound("success");
+      } else if (prev >= 0 && current > prev) {
+        // Made progress (≥1 new test passed) — partial success, no fail sound
+        playSound("success");
+      } else {
+        // First run with failures, or no improvement
+        playSound("fail");
+      }
+
+      prevPassedRef.current = current;
     }
+  }
+
+  function handleReset() {
+    // Clear previous-run memory so next run starts fresh judgment
+    prevPassedRef.current = -1;
+    reset();
   }
 
   return (
@@ -128,7 +167,7 @@ export function SandboxPanel({
             </span>
             <button
               type="button"
-              onClick={reset}
+              onClick={handleReset}
               className="pixel-small text-[#5c4427] underline cursor-pointer"
             >
               Clear
@@ -173,7 +212,7 @@ export function SandboxPanel({
             </span>
             <button
               type="button"
-              onClick={reset}
+              onClick={handleReset}
               className="pixel-small text-[#5c4427] underline cursor-pointer"
             >
               Clear
