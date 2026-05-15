@@ -203,6 +203,91 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
     setChatDraft("");
   }
 
+  // Sound + animation triggers based on snapshot diffs.
+  useEffect(() => {
+    if (!snapshot) return;
+
+    const prevPhase = previousPhaseRef.current;
+    if (prevPhase !== snapshot.phase) {
+      if (snapshot.phase === "meeting") {
+        playSound("emergency");
+      } else if (snapshot.phase === "game_over" && !winnerCelebratedRef.current) {
+        winnerCelebratedRef.current = true;
+        const myTeam: "civilian" | "imposter" = snapshot.currentUser.role === "civilian" ? "civilian" : "imposter";
+        const won = snapshot.result.winnerTeam === myTeam;
+        playSound(won ? "victory" : "defeat");
+        if (won) {
+          const end = Date.now() + 1500;
+          const tick = () => {
+            confetti({
+              particleCount: 5,
+              angle: 60,
+              spread: 60,
+              origin: { x: 0, y: 0.7 },
+              colors: ["#a2e858", "#ffcf40", "#74d6ff"],
+            });
+            confetti({
+              particleCount: 5,
+              angle: 120,
+              spread: 60,
+              origin: { x: 1, y: 0.7 },
+              colors: ["#a2e858", "#ffcf40", "#74d6ff"],
+            });
+            if (Date.now() < end) requestAnimationFrame(tick);
+          };
+          tick();
+        }
+      }
+      previousPhaseRef.current = snapshot.phase;
+    }
+
+    const chatLen = snapshot.chatMessages.length;
+    if (previousChatLengthRef.current > 0 && chatLen > previousChatLengthRef.current) {
+      playSound("notify", { volume: 0.4 });
+    }
+    previousChatLengthRef.current = chatLen;
+
+    const seconds = parseInt(snapshot.timeRemaining.replace(/s$/, ""), 10);
+    if (
+      snapshot.phase === "playing" &&
+      !Number.isNaN(seconds) &&
+      seconds > 0 &&
+      seconds <= 5 &&
+      lastTickRef.current !== seconds
+    ) {
+      lastTickRef.current = seconds;
+      playSound("tick", { volume: 0.5 });
+    } else if (seconds > 5) {
+      lastTickRef.current = null;
+    }
+
+    for (const msg of snapshot.chatMessages) {
+      const match = msg.message.match(/^(\p{Emoji}+)\s+(.+?)\s+earned achievement:\s+(.+)$/u);
+      if (!match) continue;
+      const key = `${msg.timestamp}:${msg.message}`;
+      if (seenAchievementsRef.current.has(key)) continue;
+      seenAchievementsRef.current.add(key);
+      const [, icon, who, title] = match;
+      const isMe = playerId && snapshot.players.find((p) => p.id === playerId)?.name === who;
+      if (isMe) {
+        toast.push({
+          tone: "achievement",
+          title: `Achievement Unlocked: ${title}`,
+          description: "Cek profilmu untuk lihat semua badge.",
+          icon,
+        });
+      } else {
+        toast.push({
+          tone: "info",
+          title: `${who} earned ${title}`,
+          icon,
+          durationMs: 2500,
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot]);
+
   if (!snapshot && !loadError) {
     return (
       <main className="sky-stage flex items-center justify-center px-4 py-10">
@@ -260,96 +345,6 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
     playSound("emergency");
     sendRealtimeMessage({ type: "meeting.start" });
   }
-
-  // ── Sound + animation triggers based on snapshot diffs ──
-  useEffect(() => {
-    if (!snapshot) return;
-
-    const prevPhase = previousPhaseRef.current;
-    if (prevPhase !== snapshot.phase) {
-      if (snapshot.phase === "meeting") {
-        playSound("emergency");
-      } else if (snapshot.phase === "game_over" && !winnerCelebratedRef.current) {
-        winnerCelebratedRef.current = true;
-        const myTeam: "civilian" | "imposter" = snapshot.currentUser.role === "civilian" ? "civilian" : "imposter";
-        const won = snapshot.result.winnerTeam === myTeam;
-        playSound(won ? "victory" : "defeat");
-        if (won) {
-          // Confetti burst from both edges for ~1.5s.
-          const end = Date.now() + 1500;
-          const tick = () => {
-            confetti({
-              particleCount: 5,
-              angle: 60,
-              spread: 60,
-              origin: { x: 0, y: 0.7 },
-              colors: ["#a2e858", "#ffcf40", "#74d6ff"],
-            });
-            confetti({
-              particleCount: 5,
-              angle: 120,
-              spread: 60,
-              origin: { x: 1, y: 0.7 },
-              colors: ["#a2e858", "#ffcf40", "#74d6ff"],
-            });
-            if (Date.now() < end) requestAnimationFrame(tick);
-          };
-          tick();
-        }
-      }
-      previousPhaseRef.current = snapshot.phase;
-    }
-
-    // Chat notify on new public message (not when snapshot first loads).
-    const chatLen = snapshot.chatMessages.length;
-    if (previousChatLengthRef.current > 0 && chatLen > previousChatLengthRef.current) {
-      playSound("notify", { volume: 0.4 });
-    }
-    previousChatLengthRef.current = chatLen;
-
-    // Timer tick on last 5 seconds during playing.
-    const seconds = parseInt(snapshot.timeRemaining.replace(/s$/, ""), 10);
-    if (
-      snapshot.phase === "playing" &&
-      !Number.isNaN(seconds) &&
-      seconds > 0 &&
-      seconds <= 5 &&
-      lastTickRef.current !== seconds
-    ) {
-      lastTickRef.current = seconds;
-      playSound("tick", { volume: 0.5 });
-    } else if (seconds > 5) {
-      lastTickRef.current = null;
-    }
-
-    // Achievement detection — system messages with the achievement signature.
-    for (const msg of snapshot.chatMessages) {
-      const match = msg.message.match(/^(\p{Emoji}+)\s+(.+?)\s+earned achievement:\s+(.+)$/u);
-      if (!match) continue;
-      const key = `${msg.timestamp}:${msg.message}`;
-      if (seenAchievementsRef.current.has(key)) continue;
-      seenAchievementsRef.current.add(key);
-      const [, icon, who, title] = match;
-      // Only show full toast for the current player; others get a smaller info toast.
-      const isMe = playerId && snapshot.players.find((p) => p.id === playerId)?.name === who;
-      if (isMe) {
-        toast.push({
-          tone: "achievement",
-          title: `Achievement Unlocked: ${title}`,
-          description: "Cek profilmu untuk lihat semua badge.",
-          icon,
-        });
-      } else {
-        toast.push({
-          tone: "info",
-          title: `${who} earned ${title}`,
-          icon,
-          durationMs: 2500,
-        });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot]);
 
   return (
     <>
