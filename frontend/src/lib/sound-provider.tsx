@@ -23,15 +23,15 @@ export type SoundName =
   | "eject";
 
 const SOUND_FILES: Record<SoundName, string> = {
-  click: "/sounds/click.mp3",
-  success: "/sounds/success.mp3",
-  fail: "/sounds/fail.mp3",
-  emergency: "/sounds/emergency.mp3",
-  victory: "/sounds/victory.mp3",
-  defeat: "/sounds/defeat.mp3",
-  tick: "/sounds/tick.mp3",
-  notify: "/sounds/notify.mp3",
-  eject: "/sounds/eject.mp3",
+  click: "/sounds/click.wav",
+  success: "/sounds/success.wav",
+  fail: "/sounds/fail.wav",
+  emergency: "/sounds/emergency.wav",
+  victory: "/sounds/victory.wav",
+  defeat: "/sounds/defeat.wav",
+  tick: "/sounds/tick.wav",
+  notify: "/sounds/notify.wav",
+  eject: "/sounds/eject.wav",
 };
 
 type SoundContextValue = {
