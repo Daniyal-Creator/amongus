@@ -190,16 +190,21 @@ export function registerAiRoutes(app: FastifyInstance) {
     },
   );
 
-  /* GET /api/game/:sessionId/review — AI post-game review. Cached in session_reviews. */
+  /* GET /api/game/:sessionId/review — AI post-game review per-player. Cached in session_reviews. */
   app.get<{ Params: { sessionId: string } }>("/api/game/:sessionId/review", async (request, reply) => {
     const sessionId = request.params.sessionId;
 
-    const cached = await query<{ content: string; model: string; created_at: Date }>(
-      `SELECT content, model, created_at FROM session_reviews WHERE session_id = $1`,
+    const cached = await query<{ content: string; model: string }>(
+      `SELECT content, model FROM session_reviews WHERE session_id = $1`,
       [sessionId],
     );
     if (cached.rows[0]) {
-      return { review: cached.rows[0].content, model: cached.rows[0].model, cached: true };
+      try {
+        const players = JSON.parse(cached.rows[0].content) as { name: string; role: string; feedback: string }[];
+        return { players, model: cached.rows[0].model, cached: true };
+      } catch {
+        // old format — ignore cache and regenerate
+      }
     }
 
     const ctx = await getSessionContext(sessionId);
@@ -208,47 +213,74 @@ export function registerAiRoutes(app: FastifyInstance) {
       return reply.code(409).send({ message: "Review available only after game_over." });
     }
 
-    const sabotageRows = await query<{ description: string }>(
-      `SELECT description FROM session_sabotage_log WHERE session_id = $1 ORDER BY created_at ASC`,
-      [sessionId],
-    );
+    const [sabotageRows, playerRows] = await Promise.all([
+      query<{ description: string }>(
+        `SELECT description FROM session_sabotage_log WHERE session_id = $1 ORDER BY created_at ASC`,
+        [sessionId],
+      ),
+      query<{ name: string; role: string }>(
+        `SELECT lp.name, sp.role
+         FROM session_players sp
+         JOIN lobby_players lp ON lp.id = sp.player_id
+         WHERE sp.session_id = $1
+         ORDER BY lp.created_at ASC`,
+        [sessionId],
+      ),
+    ]);
+
+    const players = playerRows.rows;
+    const winnerTeam = ctx.winner_team ?? "unknown";
+
+    const buildFallback = () =>
+      players.map((p) => ({
+        name: p.name,
+        role: p.role,
+        feedback:
+          p.role === "imposter"
+            ? winnerTeam === "imposter"
+              ? "Sabotase kamu berhasil — civilian tidak mendeteksi perubahan kode."
+              : "Sabotase kamu ketahuan. Coba lebih halus di ronde berikutnya."
+            : winnerTeam === "civilian"
+              ? "Bagus! Kamu berhasil menemukan dan melaporkan impostor."
+              : "Impostor berhasil lolos. Perhatikan lebih teliti perubahan kode kecil.",
+      }));
 
     const result = await ollamaGenerate(
       buildReviewPrompt({
         challengeTitle: ctx.challenge_title,
         language: ctx.language,
-        finalCode: ctx.editor_content,
-        winnerTeam: ctx.winner_team ?? "unknown",
-        reason: ctx.end_reason ?? "unknown",
+        winnerTeam,
+        reason: ctx.end_reason ?? "tidak diketahui",
         sabotageLog: sabotageRows.rows.map((r) => r.description),
+        players,
       }),
       {
         system: REVIEW_SYSTEM,
-        temperature: 0.5,
-        maxTokens: 600,
+        temperature: 0.4,
+        maxTokens: 300,
         timeoutMs: 60_000,
         model: config.ollamaModelReview,
       },
     );
 
-    const content = result.ok
-      ? result.text
-      : [
-          `Verdict: ${ctx.winner_team ?? "?"} team — ${ctx.end_reason ?? "no reason recorded"}.`,
-          "Refactor suggestions:",
-          "- Add explicit edge-case tests for empty input.",
-          "- Replace mutating helpers with pure functions for easier review.",
-          "- Pin loop bounds to named constants to spot sabotage faster.",
-          "Teaching moment: civilians should diff against the seed code each round to detect silent edits.",
-        ].join("\n");
+    let parsed: { name: string; role: string; feedback: string }[] | null = null;
+    if (result.ok) {
+      try {
+        const jsonMatch = result.text.match(/\[[\s\S]*\]/);
+        if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+      } catch { /* fall through to fallback */ }
+    }
+
+    const finalPlayers = parsed ?? buildFallback();
+    const modelUsed = result.ok && parsed ? config.ollamaModelReview : "fallback";
 
     await query(
       `INSERT INTO session_reviews (id, session_id, content, model)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (session_id) DO UPDATE SET content = EXCLUDED.content, model = EXCLUDED.model`,
-      [createId(), sessionId, content, result.ok ? config.ollamaModelReview : "fallback"],
+      [createId(), sessionId, JSON.stringify(finalPlayers), modelUsed],
     );
 
-    return { review: content, model: result.ok ? config.ollamaModelReview : "fallback", cached: false };
+    return { players: finalPlayers, model: modelUsed, cached: false };
   });
 }

@@ -22,49 +22,56 @@ function AiAssistPanelInner({ sessionId, playerId, onGhostHint }: { sessionId: s
     poisonResult,
     loading,
     error,
-    remaining,
+    ghostUsed,
+    poisonUsed,
     requestSuggestion,
     activatePoison,
   } = useAiAssist(sessionId, playerId, { onGhostHint });
 
-  const isRateLimited = remaining !== null && remaining <= 0;
-
   return (
     <div className="mt-6">
       <h3 className="text-xl">Ghost AI</h3>
-      <p className="pixel-small mt-1 text-white/80">
-        {remaining !== null ? `Remaining: ${remaining}/5` : "AI-powered sabotage tools"}
-      </p>
+      <p className="pixel-small mt-1 text-white/80">AI-powered sabotage tools</p>
 
-      <div className="mt-3 space-y-2">
-        <button
-          type="button"
-          onClick={() => void requestSuggestion()}
-          disabled={loading || isRateLimited}
-          className={`pixel-button pixel-button-danger w-full text-xs ${
-            loading || isRateLimited ? "opacity-60" : ""
-          }`}
-        >
-          {loading ? "Thinking..." : "ASK GHOST"}
-        </button>
+      <div className="mt-3 space-y-3">
+        {/* ASK GHOST button */}
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => void requestSuggestion()}
+            disabled={loading || ghostUsed}
+            className={`pixel-button pixel-button-danger w-full text-base px-6 py-3 ${
+              ghostUsed ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+          >
+            {loading && !ghostUsed ? "Thinking..." : ghostUsed ? "ASK GHOST — USED" : "ASK GHOST"}
+          </button>
+          {ghostUsed && (
+            <p className="pixel-small text-center text-[var(--status-error-bg)]">
+              1/1 used
+            </p>
+          )}
+        </div>
 
-        <button
-          type="button"
-          onClick={() => void activatePoison()}
-          disabled={loading || isRateLimited}
-          className={`pixel-button pixel-button-danger w-full text-xs ${
-            loading || isRateLimited ? "opacity-60" : ""
-          }`}
-        >
-          {loading ? "Injecting..." : "POISON COPILOT"}
-        </button>
+        {/* POISON COPILOT button */}
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            onClick={() => void activatePoison()}
+            disabled={loading || poisonUsed}
+            className={`pixel-button pixel-button-danger w-full text-base px-6 py-3 ${
+              poisonUsed ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+          >
+            {loading && !poisonUsed ? "Injecting..." : poisonUsed ? "POISON COPILOT — USED" : "POISON COPILOT"}
+          </button>
+          {poisonUsed && (
+            <p className="pixel-small text-center text-[var(--status-error-bg)]">
+              1/1 used
+            </p>
+          )}
+        </div>
       </div>
-
-      {isRateLimited ? (
-        <p className="pixel-small mt-2 text-[var(--status-error-bg)]">
-          Rate limited. Tunggu beberapa saat.
-        </p>
-      ) : null}
 
       {error ? (
         <div className="pixel-panel-result mt-3 px-3 py-2 border-l-4 border-l-[var(--status-error-border)]">

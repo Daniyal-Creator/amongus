@@ -1,4 +1,4 @@
-## Fitur-Fitur Code Mafia (Among Us for Coders)
+## Fitur-Fitur CodeMole (Among Us for Coders)
 
 Berdasarkan transcript video, berikut fitur-fitur yang ada di game ini:
 

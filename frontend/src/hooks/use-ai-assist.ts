@@ -13,15 +13,17 @@ export function useAiAssist(sessionId: string, playerId: string, options?: UseAi
   const [poisonResult, setPoisonResult] = useState<AiPoisoningResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [remaining, setRemaining] = useState<number | null>(null);
+  const [ghostUsed, setGhostUsed] = useState(false);
+  const [poisonUsed, setPoisonUsed] = useState(false);
 
   const requestSuggestion = useCallback(async () => {
+    if (ghostUsed) return;
     setLoading(true);
     setError(null);
     try {
       const response = await requestSabotageSuggestion(sessionId, playerId);
       setSuggestion(response);
-      setRemaining(response.remaining);
+      setGhostUsed(true);
       options?.onGhostHint?.();
     } catch (err) {
       setSuggestion(null);
@@ -29,21 +31,22 @@ export function useAiAssist(sessionId: string, playerId: string, options?: UseAi
     } finally {
       setLoading(false);
     }
-  }, [sessionId, playerId, options]);
+  }, [sessionId, playerId, options, ghostUsed]);
 
   const activatePoison = useCallback(async () => {
+    if (poisonUsed) return;
     setLoading(true);
     setError(null);
     try {
       const response = await activateCopilotPoisoning(sessionId, playerId);
       setPoisonResult(response);
-      setRemaining(response.remaining);
+      setPoisonUsed(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI service tidak tersedia.");
     } finally {
       setLoading(false);
     }
-  }, [sessionId, playerId]);
+  }, [sessionId, playerId, poisonUsed]);
 
-  return { suggestion, poisonResult, loading, error, remaining, requestSuggestion, activatePoison };
+  return { suggestion, poisonResult, loading, error, ghostUsed, poisonUsed, requestSuggestion, activatePoison };
 }

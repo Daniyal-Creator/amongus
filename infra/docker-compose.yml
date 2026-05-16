@@ -33,7 +33,7 @@ services:
       # Piston public sandbox
       PISTON_BASE_URL: https://emkc.org/api/v2/piston
       # Rate limits
-      AI_RATE_LIMIT_PER_MINUTE: "5"
+      AI_RATE_LIMIT_PER_MINUTE: "2"
       CHAT_RATE_LIMIT_PER_10S: "10"
     depends_on:
       db:
@@ -53,8 +53,10 @@ services:
       context: ../frontend
       args:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/api
+        NEXT_PUBLIC_APP_ENV: local
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:4000/api
+      NEXT_PUBLIC_APP_ENV: local
     depends_on:
       backend:
         condition: service_healthy

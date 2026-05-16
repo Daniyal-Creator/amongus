@@ -9,6 +9,15 @@ vi.mock("@/lib/api", () => ({
 
 const mockGetReview = vi.mocked(api.getGameReview);
 
+const mockResponse = {
+  players: [
+    { name: "Budi", role: "civilian", feedback: "Kamu berhasil menemukan impostor." },
+    { name: "Rani", role: "imposter", feedback: "Sabotase kamu ketahuan." },
+  ],
+  model: "llama3",
+  cached: false,
+};
+
 describe("useGameReview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -21,7 +30,6 @@ describe("useGameReview", () => {
   });
 
   it("auto-fetches when phase is game_over", async () => {
-    const mockResponse = { review: "Good game!", model: "llama3", cached: false };
     mockGetReview.mockResolvedValue(mockResponse);
 
     const { result } = renderHook(() => useGameReview("session-1", "game_over"));
@@ -52,8 +60,7 @@ describe("useGameReview", () => {
 
   it("allows manual retry after error", async () => {
     mockGetReview.mockRejectedValueOnce(new Error("fail"));
-    const mockResponse = { review: "Review text", model: "llama3", cached: true };
-    mockGetReview.mockResolvedValue(mockResponse);
+    mockGetReview.mockResolvedValue({ ...mockResponse, cached: true });
 
     const { result } = renderHook(() => useGameReview("session-1", "game_over"));
 
@@ -65,7 +72,7 @@ describe("useGameReview", () => {
       await result.current.fetchReview();
     });
 
-    expect(result.current.review).toEqual(mockResponse);
+    expect(result.current.review?.players).toHaveLength(2);
     expect(result.current.error).toBeNull();
   });
 });

@@ -12,9 +12,10 @@ type SandboxPanelProps = {
   phase: GameSnapshot["phase"];
   description: string;
   isCivilian: boolean;
-  sabotageCharges: number;
   onPrimaryAction: () => void;
 };
+
+const MAX_VISIBLE_FAILURE_DETAILS = 2;
 
 function isImposterResponse(
   response: SandboxRunResponse,
@@ -28,7 +29,6 @@ export function SandboxPanel({
   phase,
   description,
   isCivilian,
-  sabotageCharges,
   onPrimaryAction,
 }: SandboxPanelProps) {
   const { results, loading, error, execute, reset } = useSandbox(sessionId, playerId);
@@ -109,25 +109,23 @@ export function SandboxPanel({
               </span>
             )}
           </button>
-          {isCivilian ? (
-            <button
-              type="button"
-              onClick={onPrimaryAction}
-              disabled={actionDisabled}
-              className={`pixel-button pixel-button-emergency shrink-0 ${
-                actionDisabled ? "opacity-60" : "motion-safe:animate-emergency-pulse"
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <TriangleAlert className="w-4 h-4 fill-current" />
-                EMERGENCY
-              </span>
-            </button>
-          ) : (
-            <span className="pixel-small text-[#5c4427] shrink-0">
-              {sabotageCharges} charges left
+          <button
+            type="button"
+            onClick={onPrimaryAction}
+            disabled={actionDisabled}
+            className={`pixel-button pixel-button-emergency shrink-0 ${
+              actionDisabled
+                ? "opacity-60"
+                : isCivilian
+                  ? "motion-safe:animate-emergency-pulse"
+                  : "emergency-button-imposter"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <TriangleAlert className="w-4 h-4 fill-current" />
+              EMERGENCY
             </span>
-          )}
+          </button>
         </div>
       </div>
 
@@ -175,27 +173,42 @@ export function SandboxPanel({
           </div>
 
           <div className="space-y-2">
-            {results.tasks.map((task) => (
-              <div
-                key={task.index}
-                className={`pixel-panel-result px-3 py-2 ${
-                  task.done
-                    ? "border-l-4 border-l-[var(--status-success-border)]"
-                    : "border-l-4 border-l-[var(--status-error-border)]"
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`pixel-badge ${task.done ? "pixel-badge-success" : "pixel-badge-danger"}`}>
-                    {task.done ? "PASS" : "FAIL"}
-                  </span>
-                  <span className="pixel-small text-[#5c4427]">{task.title}</span>
-                </div>
-                <p className="pixel-small text-[#5c4427]">Line {task.lineHint}</p>
-                {task.hint ? (
-                  <p className="pixel-small text-[#9f2c27] mt-1">{task.hint}</p>
-                ) : null}
-              </div>
-            ))}
+            {(() => {
+              let visibleFailureDetails = 0;
+
+              return results.tasks.map((task) => {
+                const showHint =
+                  !task.done &&
+                  Boolean(task.hint) &&
+                  visibleFailureDetails < MAX_VISIBLE_FAILURE_DETAILS;
+
+                if (showHint) {
+                  visibleFailureDetails += 1;
+                }
+
+                return (
+                  <div
+                    key={task.index}
+                    className={`pixel-panel-result px-3 py-2 ${
+                      task.done
+                        ? "border-l-4 border-l-[var(--status-success-border)]"
+                        : "border-l-4 border-l-[var(--status-error-border)]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`pixel-badge ${task.done ? "pixel-badge-success" : "pixel-badge-danger"}`}>
+                        {task.done ? "PASS" : "FAIL"}
+                      </span>
+                      <span className="pixel-small text-[#5c4427]">{task.title}</span>
+                    </div>
+                    <p className="pixel-small text-[#5c4427]">Line {task.lineHint}</p>
+                    {showHint ? (
+                      <p className="pixel-small text-[#9f2c27] mt-1">{task.hint}</p>
+                    ) : null}
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       ) : null}
@@ -220,37 +233,56 @@ export function SandboxPanel({
           </div>
 
           <div className="space-y-2">
-            {results.results.map((test, idx) => (
-              <div
-                key={idx}
-                className={`pixel-panel-result px-3 py-2 ${
-                  test.passed
-                    ? "border-l-4 border-l-[var(--status-success-border)]"
-                    : "border-l-4 border-l-[var(--status-error-border)]"
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`pixel-badge ${test.passed ? "pixel-badge-success" : "pixel-badge-danger"}`}>
-                    {test.passed ? "PASS" : "FAIL"}
-                  </span>
-                  <span className="pixel-small text-[#5c4427]">Test {idx + 1}</span>
-                </div>
-                {test.input ? (
-                  <p className="pixel-small text-[#5c4427]">
-                    Input: <code className="bg-[#e8dcc8] px-1">{test.input}</code>
-                  </p>
-                ) : null}
-                <p className="pixel-small text-[#5c4427]">
-                  Expected: <code className="bg-[#e8dcc8] px-1">{test.expected}</code>
-                </p>
-                <p className="pixel-small text-[#5c4427]">
-                  Got: <code className="bg-[#e8dcc8] px-1">{test.actual}</code>
-                </p>
-                {test.error ? (
-                  <p className="pixel-small text-[#9f2c27] mt-1">{test.error}</p>
-                ) : null}
-              </div>
-            ))}
+            {(() => {
+              let visibleFailureDetails = 0;
+
+              return results.results.map((test, idx) => {
+                const showFailureDetails =
+                  !test.passed && visibleFailureDetails < MAX_VISIBLE_FAILURE_DETAILS;
+
+                if (showFailureDetails) {
+                  visibleFailureDetails += 1;
+                }
+
+                return (
+                  <div
+                    key={idx}
+                    className={`pixel-panel-result px-3 py-2 ${
+                      test.passed
+                        ? "border-l-4 border-l-[var(--status-success-border)]"
+                        : "border-l-4 border-l-[var(--status-error-border)]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`pixel-badge ${test.passed ? "pixel-badge-success" : "pixel-badge-danger"}`}>
+                        {test.passed ? "PASS" : "FAIL"}
+                      </span>
+                      <span className="pixel-small text-[#5c4427]">
+                        {test.input || `Test ${idx + 1}`}
+                      </span>
+                    </div>
+                    {test.passed || showFailureDetails ? (
+                      <>
+                        {test.input ? (
+                          <p className="pixel-small text-[#5c4427]">
+                            Input: <code className="bg-[#e8dcc8] px-1">{test.input}</code>
+                          </p>
+                        ) : null}
+                        <p className="pixel-small text-[#5c4427]">
+                          Expected: <code className="bg-[#e8dcc8] px-1">{test.expected}</code>
+                        </p>
+                        <p className="pixel-small text-[#5c4427]">
+                          Got: <code className="bg-[#e8dcc8] px-1">{test.actual}</code>
+                        </p>
+                        {test.error ? (
+                          <p className="pixel-small text-[#9f2c27] mt-1">{test.error}</p>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       ) : null}

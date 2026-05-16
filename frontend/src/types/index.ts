@@ -208,8 +208,14 @@ export type AiPoisoningResponse = {
   remaining: number;
 };
 
+export type PlayerReview = {
+  name: string;
+  role: string;
+  feedback: string;
+};
+
 export type GameReviewResponse = {
-  review: string;
+  players: PlayerReview[];
   model: string;
   cached: boolean;
 };

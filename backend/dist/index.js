@@ -28,7 +28,8 @@ const ROUND_DURATION_SECONDS = 120;
 const CATEGORY_VOTE_DURATION_SECONDS = 10;
 const CHAT_RATE_LIMIT_WINDOW_MS = 10_000;
 const CHAT_RATE_LIMIT_MAX = 10;
-const MIN_PLAYERS_TO_START = 4;
+const LOCAL_MIN_PLAYERS_TO_START = 1;
+const PRODUCTION_MIN_PLAYERS_TO_START = 4;
 /* ────────────── Chat rate limiter (delegated to services/rate-limit) ────────────── */
 async function checkChatRateLimit(playerId) {
     const result = await chatRateLimit(playerId);
@@ -37,6 +38,12 @@ async function checkChatRateLimit(playerId) {
 // Suppress unused-variable diagnostics for legacy local constants — kept for backwards reference.
 void CHAT_RATE_LIMIT_WINDOW_MS;
 void CHAT_RATE_LIMIT_MAX;
+function isLocalStartAllowed() {
+    return ["local", "development", "dev", "test"].includes(config.appEnv.toLowerCase());
+}
+function getMinimumPlayersToStart() {
+    return isLocalStartAllowed() ? LOCAL_MIN_PLAYERS_TO_START : PRODUCTION_MIN_PLAYERS_TO_START;
+}
 /* ────────────── Server setup ────────────── */
 const app = Fastify({
     logger: true,
@@ -1163,9 +1170,10 @@ app.post("/api/lobbies/:code/start", {
         reply.code(403);
         return { message: "Hanya host yang bisa memulai game." };
     }
-    if (lobby.players.length < MIN_PLAYERS_TO_START) {
+    const minimumPlayersToStart = getMinimumPlayersToStart();
+    if (lobby.players.length < minimumPlayersToStart) {
         reply.code(400);
-        return { message: `Minimal ${MIN_PLAYERS_TO_START} pemain untuk memulai game production.` };
+        return { message: `Minimal ${minimumPlayersToStart} pemain untuk memulai game.` };
     }
     const allNonHostReady = lobby.players
         .filter((player) => !player.isHost)

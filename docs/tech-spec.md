@@ -1,4 +1,4 @@
-# Spesifikasi Teknis — Code Mafia (Among Us for Coders)
+# Spesifikasi Teknis — CodeMole (Among Us for Coders)
 
 > **Versi:** 1.0.0  
 > **Tanggal:** April 2026  
@@ -24,7 +24,7 @@
 
 ## 1. Gambaran Umum Proyek
 
-**Code Mafia** adalah permainan social deduction berbasis coding yang terinspirasi dari Among Us. Pemain dibagi menjadi dua kelompok — **Civilian** dan **Imposter** — di dalam sebuah sesi coding kolaboratif real-time. Civilian berusaha menyelesaikan tantangan kode, sementara Imposter berusaha menyabotase pekerjaan mereka secara tersembunyi.
+**CodeMole** adalah permainan social deduction berbasis coding yang terinspirasi dari Among Us. Pemain dibagi menjadi dua kelompok — **Civilian** dan **Imposter** — di dalam sebuah sesi coding kolaboratif real-time. Civilian berusaha menyelesaikan tantangan kode, sementara Imposter berusaha menyabotase pekerjaan mereka secara tersembunyi.
 
 ### Tujuan Utama
 - Platform game edukatif berbasis kompetisi coding

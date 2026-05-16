@@ -11,8 +11,8 @@ export async function generateMetadata({
   const { code } = await params;
 
   return {
-    title: `Lobby ${code.toUpperCase()} | Code Mafia`,
-    description: "Retro lobby preview for Code Mafia.",
+    title: `Lobby ${code.toUpperCase()} | Code Mole`,
+    description: "Retro lobby preview for Code Mole.",
   };
 }
 

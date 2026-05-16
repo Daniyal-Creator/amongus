@@ -24,7 +24,12 @@ type LobbyRoomClientProps = {
   code: string;
 };
 
-const MIN_PLAYERS_TO_START = 4;
+const LOCAL_MIN_PLAYERS_TO_START = 1;
+const PRODUCTION_MIN_PLAYERS_TO_START = 4;
+const APP_ENV = (process.env.NEXT_PUBLIC_APP_ENV ?? process.env.NODE_ENV ?? "production").toLowerCase();
+const MIN_PLAYERS_TO_START = ["local", "development", "dev", "test"].includes(APP_ENV)
+  ? LOCAL_MIN_PLAYERS_TO_START
+  : PRODUCTION_MIN_PLAYERS_TO_START;
 
 const PixelCopyIcon = () => (
   <svg
@@ -318,7 +323,7 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
           <div className="w-full max-w-lg animate-in slide-in-from-bottom-4 duration-300">
             <div className="mb-6 flex flex-col items-center">
               <h1 className="pixel-title w-full text-center text-4xl leading-none text-white [text-shadow:4px_4px_0_#2b4a1b] sm:text-6xl">
-                CODE MAFIA
+                Code Mole
               </h1>
               <div className="mt-4 flex items-center gap-3 rounded-xl bg-black/40 px-5 py-2 border-2 border-white/10">
                 <span className="pixel-small text-white/80">LOBBY CODE:</span>
@@ -379,22 +384,27 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                 {players.map((player) => (
                   <div
                     key={player.id}
-                    className={`flex items-stretch gap-2 ${
-                      playersListInViewport ? "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200" : "motion-safe:opacity-0"
-                    }`}
+                    className="flex items-stretch gap-2 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
                   >
                     {/* Left: Avatar Box */}
-                    <div className="w-[72px] h-[72px] flex items-center justify-center border-[3px] border-[#5c4427] bg-[#8a6b45] shadow-[inset_0_0_8px_rgba(0,0,0,0.3)] shrink-0 relative">
-                      <Image
-                        src={getCharacterAsset(player.id)} 
-                        alt={`Character for ${player.name}`}
-                        width={52}
-                        height={52}
-                        style={{ imageRendering: "pixelated" }}
-                        className="w-[52px] h-[52px] object-contain drop-shadow-md"
-                        unoptimized
-                      />
-                      <div className="absolute top-1 left-1 w-2 h-2 border-[1px] border-black/50 shadow-sm" style={{ backgroundColor: player.color }} title="Team Color" />
+                    <div className="flex flex-col items-center shrink-0 gap-0.5">
+                      {player.isHost ? (
+                        <Crown className="w-4 h-4 text-[#f5c400] drop-shadow-[0_1px_0_rgba(0,0,0,0.6)]" />
+                      ) : (
+                        <div className="w-4 h-4" />
+                      )}
+                      <div className="w-[64px] h-[64px] flex items-center justify-center border-[3px] border-[#5c4427] bg-[#8a6b45] shadow-[inset_0_0_8px_rgba(0,0,0,0.3)] relative">
+                        <Image
+                          src={getCharacterAsset(player.id)}
+                          alt={`Character for ${player.name}`}
+                          width={48}
+                          height={48}
+                          style={{ imageRendering: "pixelated" }}
+                          className="w-[48px] h-[48px] object-contain drop-shadow-md"
+                          unoptimized
+                        />
+                        <div className="absolute top-1 left-1 w-2 h-2 border-[1px] border-black/50 shadow-sm" style={{ backgroundColor: player.color }} title="Team Color" />
+                      </div>
                     </div>
 
                     {/* Right: Info Box (Paper style) */}
@@ -435,7 +445,7 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
               <div className="mt-8 flex flex-col gap-4 border-t-4 border-[color:var(--brown-dark)] pt-6">
                 <p className="pixel-small text-center text-white/90">
                   {!hasMinimumPlayers
-                    ? `Need ${MIN_PLAYERS_TO_START} players to start a production match.`
+                    ? `Need ${MIN_PLAYERS_TO_START} players to start this match.`
                     : allNonHostReady
                     ? (
                       <span className="flex items-center justify-center gap-2">

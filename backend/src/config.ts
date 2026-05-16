@@ -26,7 +26,7 @@ function parseBoolean(value: string | undefined) {
 export const config = {
   port: Number(process.env.PORT ?? DEFAULT_PORT),
   host: process.env.HOST ?? DEFAULT_HOST,
-  appEnv: process.env.APP_ENV ?? "local",
+  appEnv: process.env.APP_ENV ?? process.env.NODE_ENV ?? "production",
   databaseUrl: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
   databaseSsl: parseBoolean(process.env.DATABASE_SSL),
   railwayEnvironment: process.env.RAILWAY_ENVIRONMENT ?? "",
@@ -41,6 +41,6 @@ export const config = {
     process.env.OLLAMA_MODEL_IMPOSTER ?? process.env.OLLAMA_MODEL ?? "gpt-oss:120b",
   ollamaApiKey: process.env.OLLAMA_API_KEY ?? "",
   pistonBaseUrl: process.env.PISTON_BASE_URL ?? "https://emkc.org/api/v2/piston",
-  aiRateLimitPerMinute: Number(process.env.AI_RATE_LIMIT_PER_MINUTE ?? 5),
+  aiRateLimitPerMinute: Number(process.env.AI_RATE_LIMIT_PER_MINUTE ?? 2),
   chatRateLimitPer10s: Number(process.env.CHAT_RATE_LIMIT_PER_10S ?? 10),
 };

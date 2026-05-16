@@ -42,11 +42,19 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const pendingEditorContentRef = useRef<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const meetingChatEndRef = useRef<HTMLDivElement | null>(null);
+  const meetingChatContainerRef = useRef<HTMLDivElement | null>(null);
+  const [meetingChatAtBottom, setMeetingChatAtBottom] = useState(true);
+  const [meetingUnreadCount, setMeetingUnreadCount] = useState(0);
+  const prevMeetingChatLengthRef = useRef(0);
   const [roleRevealStage, setRoleRevealStage] = useState<"hidden" | "assigning" | "revealed">("hidden");
   const hasShownRoleRef = useRef(false);
   const [ghostToast, setGhostToast] = useState(false);
   const ghostToastTimerRef = useRef<number | null>(null);
   const [emergencyConfirmOpen, setEmergencyConfirmOpen] = useState(false);
+  const [showMeetingAlert, setShowMeetingAlert] = useState(false);
+  const meetingAlertShownRef = useRef(false);
+  const meetingAlertStartedByRef = useRef<string | null>(null);
+  const meetingAlertTimerRef = useRef<number | null>(null);
   const { play: playSound } = useSounds();
   const toast = useToast();
   const previousPhaseRef = useRef<GameSnapshot["phase"] | null>(null);
@@ -146,8 +154,23 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   useEffect(() => {
     const behavior: ScrollBehavior = shouldReduceMotion ? "auto" : "smooth";
     chatEndRef.current?.scrollIntoView({ behavior });
-    meetingChatEndRef.current?.scrollIntoView({ behavior });
-  }, [shouldReduceMotion, snapshot?.chatMessages.length, snapshot?.imposterFeed?.length, snapshot?.phase]);
+    // Only auto-scroll meeting chat if user is at bottom
+    if (meetingChatAtBottom) {
+      meetingChatEndRef.current?.scrollIntoView({ behavior });
+    }
+  }, [shouldReduceMotion, snapshot?.chatMessages.length, snapshot?.imposterFeed?.length, snapshot?.phase, meetingChatAtBottom]);
+
+  // Track unread meeting chat messages when user has scrolled up
+  useEffect(() => {
+    if (!snapshot || snapshot.phase !== "meeting") return;
+    const len = snapshot.chatMessages.length;
+    if (len > prevMeetingChatLengthRef.current) {
+      if (!meetingChatAtBottom) {
+        setMeetingUnreadCount((prev) => prev + (len - prevMeetingChatLengthRef.current));
+      }
+      prevMeetingChatLengthRef.current = len;
+    }
+  }, [snapshot?.chatMessages.length, meetingChatAtBottom, snapshot?.phase]);
 
   useEffect(() => {
     if (snapshot?.phase === "playing" && !hasShownRoleRef.current) {
@@ -215,6 +238,19 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
     if (prevPhase !== snapshot.phase) {
       if (snapshot.phase === "meeting") {
         playSound("emergency");
+        if (!meetingAlertShownRef.current) {
+          meetingAlertShownRef.current = true;
+          meetingAlertStartedByRef.current = snapshot.meeting?.startedBy ?? null;
+          setShowMeetingAlert(true);
+          if (meetingAlertTimerRef.current !== null) window.clearTimeout(meetingAlertTimerRef.current);
+          meetingAlertTimerRef.current = window.setTimeout(() => {
+            setShowMeetingAlert(false);
+          }, 2800);
+        }
+      } else if (snapshot.phase === "playing") {
+        meetingAlertShownRef.current = false;
+        setMeetingUnreadCount(0);
+        prevMeetingChatLengthRef.current = 0;
       } else if (snapshot.phase === "game_over" && !winnerCelebratedRef.current) {
         winnerCelebratedRef.current = true;
         const myTeam: "civilian" | "imposter" = snapshot.currentUser.role === "civilian" ? "civilian" : "imposter";
@@ -347,12 +383,21 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const matchAchievements = deriveMatchAchievements(snapshot);
 
   function handlePrimaryAction() {
-    if (isCivilian) {
-      // Open confirmation dialog before triggering meeting (avoids accidental clicks).
-      playSound("click");
-      setEmergencyConfirmOpen(true);
-    }
-    // Imposter has no primary action; sabotage flows through RUN CODE in SandboxPanel.
+    playSound("click");
+    setEmergencyConfirmOpen(true);
+  }
+
+  function handleMeetingChatScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    setMeetingChatAtBottom(atBottom);
+    if (atBottom) setMeetingUnreadCount(0);
+  }
+
+  function scrollMeetingChatToBottom() {
+    meetingChatEndRef.current?.scrollIntoView({ behavior: shouldReduceMotion ? "auto" : "smooth" });
+    setMeetingChatAtBottom(true);
+    setMeetingUnreadCount(0);
   }
 
   function confirmEmergencyMeeting() {
@@ -371,12 +416,12 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             <div className="flex flex-wrap items-center gap-3 justify-center md:justify-start">
               {snapshot.phase === "playing" ? (
                 <span
-                  className={`pixel-chip text-sm px-4 py-1.5 ${isCivilian ? "pixel-chip-green" : "pixel-chip-red"}`}
+                  className={`pixel-chip text-xl px-6 py-2.5 ${isCivilian ? "pixel-chip-green" : "pixel-chip-red"}`}
                 >
                   {roleLabel}
                 </span>
               ) : null}
-              {snapshot.phase === "meeting" ? <span className="pixel-chip text-sm px-4 py-1.5">MEETING</span> : null}
+              {snapshot.phase === "meeting" ? <span className="pixel-chip text-xl px-6 py-2.5">MEETING</span> : null}
               {(() => {
                 const me = snapshot.players.find((p) => p.id === snapshot.currentUser.id);
                 if (me && (me.status === "ejected after meeting" || me.status === "left game")) {
@@ -384,7 +429,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                     <motion.span
                       initial={{ opacity: 0, scale: 0.6 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="pixel-chip text-sm px-4 py-1.5 bg-[#1a1a2e] text-[#ff688b] border-[#ff688b]"
+                      className="pixel-chip text-xl px-6 py-2.5 bg-[#1a1a2e] text-[#ff688b] border-[#ff688b]"
                     >
                       👁️ SPECTATING
                     </motion.span>
@@ -392,7 +437,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                 }
                 return null;
               })()}
-              <span className="pixel-small text-white/80">{snapshot.category}</span>
+              <span className="text-lg font-bold text-white/90 tracking-wide">{snapshot.category}</span>
             </div>
 
             {/* Center: Round */}
@@ -421,49 +466,70 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             <aside className="bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 p-5 xl:overflow-y-auto flex flex-col gap-5 shadow-lg">
               <h2 className="text-2xl font-bold tracking-wider text-white/90 drop-shadow-sm">Players</h2>
               <div className="mt-4 space-y-2">
-                {snapshot.players.map((player) => (
-                  <div key={player.id} className="flex items-center gap-3">
-                    <div className="w-[36px] h-[36px] flex items-center justify-center border-[2px] border-[#5c4427] bg-[#8a6b45] shadow-[inset_0_0_4px_rgba(0,0,0,0.3)] shrink-0 relative">
-                      <Image
-                        src={getCharacterAsset(player.id)}
-                        alt={player.name}
-                        width={24}
-                        height={24}
-                        style={{ imageRendering: "pixelated" }}
-                        className="w-[24px] h-[24px] object-contain drop-shadow-md"
-                        unoptimized
-                      />
-                      <div className="absolute top-0.5 left-0.5 w-1.5 h-1.5 border-[1px] border-black/50 shadow-sm" style={{ backgroundColor: player.color }} title="Team Color" />
-                    </div>
-                    <span
-                      className={`text-base leading-tight ${
-                        player.id === snapshot.currentUser.id ? "text-[color:var(--red)]" : ""
-                      } ${player.status?.includes("ejected") ? "line-through opacity-50" : ""}`}
-                    >
-                      {player.name}
-                      {player.id === snapshot.currentUser.id ? " (You)" : ""}
-                    </span>
-                    {player.isDisconnected ? (
-                      <motion.span
-                        initial={{ opacity: 0, scale: 0.6 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="ml-1 inline-flex items-center gap-1 pixel-chip pixel-chip-red text-[9px] px-1 py-0"
-                        title="Player disconnected — AFK timeout in 2 minutes"
+                {snapshot.players.map((player) => {
+                  const isEjected = player.status?.includes("ejected") ?? false;
+                  const isCurrentPlayer = player.id === snapshot.currentUser.id;
+
+                  return (
+                    <div key={player.id} className="flex items-center gap-3">
+                      <div
+                        className={`w-[36px] h-[36px] flex items-center justify-center border-[2px] shadow-[inset_0_0_4px_rgba(0,0,0,0.3)] shrink-0 relative ${
+                          isEjected
+                            ? "border-[#5f626b] bg-[#777b84] opacity-65 grayscale"
+                            : "border-[#5c4427] bg-[#8a6b45]"
+                        }`}
                       >
-                        <motion.span
-                          aria-hidden
-                          animate={{ opacity: [1, 0.3, 1] }}
-                          transition={{ duration: shouldReduceMotion ? 0 : 1.2, repeat: shouldReduceMotion ? 0 : Infinity }}
-                          className="w-1.5 h-1.5 rounded-full bg-red-500"
+                        <Image
+                          src={getCharacterAsset(player.id)}
+                          alt={player.name}
+                          width={24}
+                          height={24}
+                          style={{ imageRendering: "pixelated" }}
+                          className={`w-[24px] h-[24px] object-contain drop-shadow-md ${
+                            isEjected ? "grayscale opacity-60" : ""
+                          }`}
+                          unoptimized
                         />
-                        AFK
-                      </motion.span>
-                    ) : null}
-                    {player.status === "left game" ? (
-                      <span className="ml-1 inline-block pixel-chip text-[9px] px-1 py-0 opacity-60">LEFT</span>
-                    ) : null}
-                  </div>
-                ))}
+                        <div
+                          className="absolute top-0.5 left-0.5 w-1.5 h-1.5 border-[1px] border-black/50 shadow-sm"
+                          style={{ backgroundColor: isEjected ? "#9ca3af" : player.color }}
+                          title={isEjected ? "Ejected" : "Team Color"}
+                        />
+                      </div>
+                      <span
+                        className={`text-base leading-tight ${
+                          isEjected
+                            ? "text-[#9ca3af] line-through decoration-2 opacity-80"
+                            : isCurrentPlayer
+                              ? "text-[color:var(--red)]"
+                              : ""
+                        }`}
+                      >
+                        {player.name}
+                        {isCurrentPlayer ? " (You)" : ""}
+                      </span>
+                      {player.isDisconnected && !isEjected ? (
+                        <motion.span
+                          initial={{ opacity: 0, scale: 0.6 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="ml-1 inline-flex items-center gap-1 pixel-chip pixel-chip-red text-[9px] px-1 py-0"
+                          title="Player disconnected — AFK timeout in 2 minutes"
+                        >
+                          <motion.span
+                            aria-hidden
+                            animate={{ opacity: [1, 0.3, 1] }}
+                            transition={{ duration: shouldReduceMotion ? 0 : 1.2, repeat: shouldReduceMotion ? 0 : Infinity }}
+                            className="w-1.5 h-1.5 rounded-full bg-red-500"
+                          />
+                          AFK
+                        </motion.span>
+                      ) : null}
+                      {player.status === "left game" ? (
+                        <span className="ml-1 inline-block pixel-chip text-[9px] px-1 py-0 opacity-60">LEFT</span>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="mt-2">
@@ -482,7 +548,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                 <p className="pixel-small mt-4 text-white/60">
                   {isCivilian
                     ? "Call emergency meeting if you see something sus."
-                    : `${snapshot.sabotageCharges} charges left. Edit the code and click VALIDATE BUG.`}
+                    : "Edit the code and click VALIDATE BUG."}
                 </p>
               </div>
 
@@ -533,7 +599,6 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                 phase={snapshot.phase}
                 description={snapshot.challenge.description}
                 isCivilian={isCivilian}
-                sabotageCharges={snapshot.sabotageCharges}
                 onPrimaryAction={handlePrimaryAction}
               />
             </div>
@@ -735,32 +800,36 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                </div>
             </div>
 
-            {/* Right side: Chat & Code Snippet */}
+            {/* Right side: Discussion Chat */}
             <div className="flex flex-col gap-6">
-              {snapshot.meeting.snippet && (
-                <div className="bg-[#f4e4c1] border-[4px] border-[#8b5a2b] shadow-[6px_6px_0_0_rgba(0,0,0,0.4)] p-4">
-                  <p className="pixel-small text-[#8b5a2b] mb-2 font-bold uppercase border-b-[2px] border-[#8b5a2b] pb-1">
-                    Captured Code
-                  </p>
-                  <pre className="font-mono text-xs text-[#39404f] bg-[#fff8ea] p-3 border-2 border-[#5c4427] max-h-[150px] overflow-y-auto shadow-inner">
-                    {snapshot.meeting.snippet}
-                  </pre>
-                </div>
-              )}
-              
               <div className="flex-1 bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[6px_6px_0_0_rgba(0,0,0,0.4)] flex flex-col overflow-hidden min-h-[300px]">
                 <div className="p-3 border-b-[4px] border-[#8b5a2b] bg-[#8a6b45] flex items-center justify-between shadow-[inset_0_-2px_0_rgba(0,0,0,0.2)]">
                   <p className="pixel-small text-white drop-shadow-md">DISCUSSION</p>
                   <span className="px-2 py-1 bg-[#5c4427] text-[#fff8ea] border-[2px] border-[#3e2723] text-[10px] pixel-small">{snapshot.chatMessages.length} msgs</span>
                 </div>
-                <div className="flex-1 p-4 overflow-y-auto space-y-2 bg-[#f4e4c1] shadow-[inset_0_0_10px_rgba(0,0,0,0.1)]">
-                  {snapshot.chatMessages.slice(-20).map((msg, idx) => (
-                    <div key={`meeting-chat-${idx}`} className="pixel-small bg-[#fff8ea] px-3 py-2 border-[2px] border-[#e0c9a3] shadow-sm">
-                      <span className="font-bold drop-shadow-sm" style={{ color: msg.color }}>{msg.user}: </span>
-                      <span className="text-[#39404f]">{msg.message}</span>
-                    </div>
-                  ))}
-                  <div ref={meetingChatEndRef} />
+                <div className="relative flex-1 overflow-hidden">
+                  <div
+                    ref={meetingChatContainerRef}
+                    onScroll={handleMeetingChatScroll}
+                    className="meeting-chat-scroll h-full p-4 overflow-y-auto space-y-2 bg-[#f4e4c1] shadow-[inset_0_0_10px_rgba(0,0,0,0.1)]"
+                  >
+                    {snapshot.chatMessages.slice(-50).map((msg, idx) => (
+                      <div key={`meeting-chat-${idx}`} className="pixel-small bg-[#fff8ea] px-3 py-2 border-[2px] border-[#e0c9a3] shadow-sm">
+                        <span className="font-bold drop-shadow-sm" style={{ color: msg.color }}>{msg.user}: </span>
+                        <span className="text-[#39404f]">{msg.message}</span>
+                      </div>
+                    ))}
+                    <div ref={meetingChatEndRef} />
+                  </div>
+                  {meetingUnreadCount > 0 && !meetingChatAtBottom ? (
+                    <button
+                      type="button"
+                      onClick={scrollMeetingChatToBottom}
+                      className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 bg-[#5c4427] text-[#fff8ea] border-[2px] border-[#3e2723] shadow-[2px_2px_0_0_rgba(0,0,0,0.4)] pixel-small text-[11px] hover:bg-[#8a6b45] transition-colors z-10"
+                    >
+                      ↓ {meetingUnreadCount} pesan baru
+                    </button>
+                  ) : null}
                 </div>
                 <div className="p-3 border-t-[4px] border-[#8b5a2b] bg-[#e6c9a8]">
                   <form onSubmit={handleChatSubmit} className="flex gap-2">
@@ -973,24 +1042,26 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
           roleRevealStage === "assigning"
             ? "bg-black"
             : isCivilian
-              ? "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#1d4018] via-[#0c1f09] to-black"
+              ? "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#071a40] via-[#030d24] to-black"
               : "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#5e0d0d] via-[#240303] to-black"
         }`}>
           {roleRevealStage === "assigning" ? (
-            <p className="pixel-title text-3xl sm:text-5xl text-white motion-safe:animate-pulse tracking-widest">
+            <p className="pixel-title text-3xl sm:text-5xl motion-safe:animate-pulse tracking-widest" style={{ color: "#ffffff" }}>
               Assigning roles...
             </p>
           ) : (
             <div className="flex flex-col items-center animate-in zoom-in slide-in-from-bottom-8 duration-700 ease-out">
-              <p className={`pixel-title text-7xl sm:text-9xl tracking-widest drop-shadow-[0_0_30px_rgba(0,0,0,0.8)] ${
-                isCivilian ? "text-[#a2e858]" : "text-[#ff3333]"
-              }`}>
+              <p
+                className="pixel-title text-7xl sm:text-9xl tracking-widest drop-shadow-[0_0_30px_rgba(0,0,0,0.8)]"
+                style={{ color: isCivilian ? "#4da6ff" : "#ff3333" }}
+              >
                 {roleLabel}
               </p>
-              <p className={`pixel-small mt-6 text-xl sm:text-2xl tracking-wide drop-shadow-md ${
-                isCivilian ? "text-[#c5ff8f]" : "text-[#ff8f8f]"
-              }`}>
-                {isCivilian ? "Complete tasks & find the imposter" : "Sabotage and eliminate them all"}
+              <p
+                className="pixel-small mt-6 text-xl sm:text-2xl tracking-wide drop-shadow-md"
+                style={{ color: isCivilian ? "#a0d4ff" : "#ff8f8f" }}
+              >
+                {isCivilian ? "Selesaikan task & temukan impostornya" : "Sabotase dan eliminasi mereka semua"}
               </p>
             </div>
           )}
@@ -1007,6 +1078,57 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
         onConfirm={confirmEmergencyMeeting}
         onCancel={() => setEmergencyConfirmOpen(false)}
       />
+
+      {/* Emergency Meeting Alert Overlay */}
+      <AnimatePresence>
+        {showMeetingAlert ? (
+          <motion.div
+            key="emergency-alert"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="fixed inset-0 z-[110] flex flex-col items-center justify-center bg-[#0a0a0a]"
+          >
+            <motion.div
+              initial={{ scale: 0.7, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 1.05, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 400, damping: 20 }}
+              className="emergency-alert-box emergency-alert-title px-8 py-8 text-center max-w-[520px] w-[90vw]"
+              style={{ background: "#c0392b", border: "6px solid #7b1a0f" }}
+            >
+              <p
+                className="pixel-title tracking-widest leading-tight"
+                style={{ fontSize: "clamp(1.8rem, 5vw, 2.8rem)", color: "#ffffff", textShadow: "3px 3px 0 #7b1a0f" }}
+              >
+                EMERGENCY
+              </p>
+              <p
+                className="pixel-title tracking-widest leading-tight"
+                style={{ fontSize: "clamp(1.8rem, 5vw, 2.8rem)", color: "#ffffff", textShadow: "3px 3px 0 #7b1a0f" }}
+              >
+                MEETING!
+              </p>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="mt-8 text-center"
+            >
+              <p className="pixel-small text-white/90 text-xl tracking-wide">
+                Dipanggil oleh{" "}
+                <span className="text-[#ff8f8f] font-bold">{meetingAlertStartedByRef.current ?? "unknown"}</span>
+              </p>
+              <p className="pixel-small text-white/50 mt-3 motion-safe:animate-pulse">
+                Voting akan segera dimulai...
+              </p>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }

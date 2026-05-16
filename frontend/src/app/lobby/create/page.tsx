@@ -9,7 +9,7 @@ import { setLobbyPlayerId } from "@/lib/player-session";
 
 export default function CreateLobbyPage() {
   const router = useRouter();
-  const [hostName, setHostName] = useState("Rayyan");
+  const [hostName, setHostName] = useState("Your Name");
   const [mode, setMode] = useState("standard");
   const [maxPlayers, setMaxPlayers] = useState(4);
   const [isPrivate, setIsPrivate] = useState(false);

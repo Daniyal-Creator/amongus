@@ -42,25 +42,25 @@ export function buildCopilotPoisonPrompt(challengeTitle, language, source) {
     ].join("\n");
 }
 export const REVIEW_SYSTEM = [
-    "You are a senior code reviewer summarizing a multiplayer code-mafia match.",
-    "Given the final code, sabotage log, and game result, write a short post-game review:",
-    "1. Verdict (1 line).",
-    "2. Three concrete refactoring suggestions (bullet list).",
-    "3. One paragraph teaching moment about what civilians should have spotted.",
-    "Keep under 250 words. Plain text, no markdown headings.",
+    "Kamu adalah juri pertandingan coding game.",
+    "Tugas: beri feedback singkat per pemain dalam Bahasa Indonesia.",
+    "Output HARUS berupa JSON array valid seperti ini:",
+    '[{"name":"NamaPemain","role":"civilian","feedback":"1 kalimat feedback spesifik untuk pemain ini."}]',
+    "Aturan: feedback maks 1 kalimat per pemain, jujur dan langsung ke poin, tidak ada basa-basi.",
+    "Jangan tambahkan teks apapun di luar JSON. Hanya JSON array.",
 ].join(" ");
 export function buildReviewPrompt(input) {
     return [
         `Challenge: ${input.challengeTitle} (${input.language})`,
-        `Winner: ${input.winnerTeam}`,
-        `Reason: ${input.reason}`,
+        `Pemenang: ${input.winnerTeam === "civilian" ? "Tim Civilian" : "Tim Imposter"}`,
+        `Alasan: ${input.reason}`,
         "",
-        "Sabotage log:",
-        input.sabotageLog.length ? input.sabotageLog.map((s) => `- ${s}`).join("\n") : "- none",
+        "Log sabotase:",
+        input.sabotageLog.length ? input.sabotageLog.map((s) => `- ${s}`).join("\n") : "- tidak ada",
         "",
-        "Final code:",
-        "```",
-        input.finalCode.slice(0, 6000),
-        "```",
+        "Daftar pemain:",
+        input.players.map((p) => `- ${p.name} (${p.role})`).join("\n"),
+        "",
+        "Beri feedback 1 kalimat per pemain dalam JSON array.",
     ].join("\n");
 }

@@ -15,7 +15,12 @@ import type {
 const STORE_KEY = "code-mafia:mock-store:v1";
 const CATEGORY_VOTE_DURATION_SECONDS = 10;
 const ROUND_DURATION_SECONDS = 120;
-const MIN_PLAYERS_TO_START = 4;
+const LOCAL_MIN_PLAYERS_TO_START = 1;
+const PRODUCTION_MIN_PLAYERS_TO_START = 4;
+const APP_ENV = (process.env.NEXT_PUBLIC_APP_ENV ?? process.env.NODE_ENV ?? "production").toLowerCase();
+const MIN_PLAYERS_TO_START = ["local", "development", "dev", "test"].includes(APP_ENV)
+  ? LOCAL_MIN_PLAYERS_TO_START
+  : PRODUCTION_MIN_PLAYERS_TO_START;
 const COLOR_PALETTE = ["#14f59b", "#ffd95a", "#6da8ff", "#ff688b", "#ff9f43"];
 const PLAYER_TITLES = [
   "Host / Frontend Fixer",
@@ -502,14 +507,14 @@ function buildDefaultStore(): MockStore {
   const seedLobbyCode = "MOCK01";
   const seedLobby: MockLobbyRecord = {
     code: seedLobbyCode,
-    host: "Rayyan",
+    host: "Your Name",
     status: "waiting",
     maxPlayers: 4,
     activeSessionId: null,
     players: [
       {
         id: "player-1",
-        name: "Rayyan",
+        name: "Your Name",
         title: PLAYER_TITLES[0],
         color: COLOR_PALETTE[0],
         isReady: true,
@@ -1069,7 +1074,7 @@ export async function startMockLobby(code: string, playerId: string) {
       throw new Error("Hanya host yang bisa memulai game.");
     }
     if (lobby.players.length < MIN_PLAYERS_TO_START) {
-      throw new Error(`Minimal ${MIN_PLAYERS_TO_START} pemain untuk memulai game production.`);
+      throw new Error(`Minimal ${MIN_PLAYERS_TO_START} pemain untuk memulai game.`);
     }
     const allNonHostReady = lobby.players
       .filter((player) => !player.isHost)
@@ -1206,7 +1211,7 @@ const MOCK_GHOST_HINTS = [
 ];
 
 let mockGhostHintIndex = 0;
-let mockAiRemaining = 5;
+let mockAiRemaining = 2;
 
 export async function requestMockSabotageSuggestion(
   sessionId: string,

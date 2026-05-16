@@ -34,7 +34,7 @@ describe("AiAssistPanel", () => {
     mockSuggest.mockResolvedValue({
       suggestion: "Swap the loop boundary",
       model: "llama3",
-      remaining: 4,
+      remaining: 1,
     });
 
     render(<AiAssistPanel sessionId="s1" playerId="p1" phase="playing" />);
@@ -44,14 +44,30 @@ describe("AiAssistPanel", () => {
       expect(screen.getByText("Swap the loop boundary")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Remaining: 4/5")).toBeInTheDocument();
+    expect(screen.getByText("1/1 used")).toBeInTheDocument();
+    expect(screen.getByText("ASK GHOST — USED")).toBeInTheDocument();
+  });
+
+  it("disables ASK GHOST after use", async () => {
+    mockSuggest.mockResolvedValue({
+      suggestion: "Swap the loop boundary",
+      model: "llama3",
+      remaining: 1,
+    });
+
+    render(<AiAssistPanel sessionId="s1" playerId="p1" phase="playing" />);
+    fireEvent.click(screen.getByText("ASK GHOST"));
+
+    await waitFor(() => {
+      expect(screen.getByText("ASK GHOST — USED")).toBeDisabled();
+    });
   });
 
   it("displays poison confirmation on POISON COPILOT click", async () => {
     mockPoison.mockResolvedValue({
       poisonedHint: "Use i <= n for safety",
       usedFallback: false,
-      remaining: 3,
+      remaining: 0,
     });
 
     render(<AiAssistPanel sessionId="s1" playerId="p1" phase="playing" />);
@@ -60,6 +76,8 @@ describe("AiAssistPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("Poisoned hint injected to chat.")).toBeInTheDocument();
     });
+
+    expect(screen.getByText("POISON COPILOT — USED")).toBeInTheDocument();
   });
 
   it("shows error on AI failure", async () => {
@@ -77,7 +95,7 @@ describe("AiAssistPanel", () => {
     mockPoison.mockResolvedValue({
       poisonedHint: "fallback hint",
       usedFallback: true,
-      remaining: 2,
+      remaining: 1,
     });
 
     render(<AiAssistPanel sessionId="s1" playerId="p1" phase="playing" />);

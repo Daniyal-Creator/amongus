@@ -96,7 +96,7 @@ export function CodeEditor({ value, language, disabled, onChange, onCursorActivi
         padding: "12px 0",
         caretColor: "#a2e858",
       },
-      ".cm-cursor": {
+      "&.cm-focused .cm-cursor, .cm-cursor": {
         borderLeftColor: "#a2e858",
         borderLeftWidth: "2px",
       },

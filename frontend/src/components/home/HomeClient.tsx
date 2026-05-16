@@ -27,11 +27,11 @@ export function HomeClient() {
       <SettingsPanel />
       <div className="relative z-10 flex w-full max-w-3xl flex-col items-center">
         <div className="pixel-logo text-center">
-          <p className="pixel-title text-4xl text-white [text-shadow:4px_4px_0_#2b4a1b] sm:text-6xl">CODE</p>
+          <p className="pixel-title text-4xl text-white [text-shadow:4px_4px_0_#2b4a1b] sm:text-6xl">Code</p>
           <p className="mt-2 text-4xl text-[#a2e858] [text-shadow:4px_4px_0_#2b4a1b] sm:text-6xl">
-            MAFIA
+            Mole
           </p>
-          <p className="pixel-small mt-5 font-semibold text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
+          <p className="pixel-small mt-5 text-xl font-bold text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] sm:text-2xl tracking-wide">
             Sabotage or Survive
           </p>
         </div>

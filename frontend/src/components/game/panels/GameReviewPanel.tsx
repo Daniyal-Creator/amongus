@@ -14,13 +14,13 @@ export function GameReviewPanel({ sessionId, phase }: GameReviewPanelProps) {
 
   return (
     <div className="pixel-panel mt-6 p-5">
-      <p className="text-xl mb-3">AI Post-Game Review</p>
+      <p className="text-xl mb-4">Feedback Pemain</p>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-6 gap-4">
+        <div className="flex flex-col items-center justify-center py-6 gap-3">
           <div className="pixel-spinner" />
           <p className="pixel-small text-[#5c4427] motion-safe:animate-pulse">
-            AI sedang menganalisis game session...
+            AI sedang menganalisis...
           </p>
         </div>
       ) : null}
@@ -33,22 +33,32 @@ export function GameReviewPanel({ sessionId, phase }: GameReviewPanelProps) {
             onClick={() => void fetchReview()}
             className="pixel-button text-xs px-3 min-h-[32px]"
           >
-            Retry
+            Coba Lagi
           </button>
         </div>
       ) : null}
 
       {review && !loading ? (
-        <div>
-          <div className="pixel-panel-result px-4 py-3">
-            <pre className="pixel-small text-[#5c4427] whitespace-pre-wrap font-[var(--font-plex-mono)]">
-              {review.review}
-            </pre>
-          </div>
-          <div className="flex items-center gap-2 mt-3">
-            <span className="pixel-badge pixel-badge-info">{review.model}</span>
-            <span className="pixel-badge">{review.cached ? "Cached" : "Fresh"}</span>
-          </div>
+        <div className="space-y-3">
+          {review.players.map((player) => (
+            <div
+              key={player.name}
+              className="flex items-start gap-3 px-3 py-3 bg-[#fff8ea] border-2 border-[#e0c9a3]"
+            >
+              <span
+                className={`pixel-chip text-[10px] px-2 py-0.5 shrink-0 mt-0.5 ${
+                  player.role === "imposter" ? "pixel-chip-red" : "pixel-chip-green"
+                }`}
+              >
+                {player.role === "imposter" ? "IMPOSTOR" : "CIVILIAN"}
+              </span>
+              <div className="min-w-0">
+                <p className="pixel-small font-bold text-[#5c4427] mb-0.5">{player.name}</p>
+                <p className="pixel-small text-[#39404f]">{player.feedback}</p>
+              </div>
+            </div>
+          ))}
+          <p className="pixel-small text-[#a69882] text-right mt-1">model: {review.model}</p>
         </div>
       ) : null}
     </div>

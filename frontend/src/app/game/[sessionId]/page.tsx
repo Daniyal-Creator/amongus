@@ -11,8 +11,8 @@ export async function generateMetadata({
   const { sessionId } = await params;
 
   return {
-    title: `Session ${sessionId} | Code Mafia`,
-    description: "Retro coding round interface for Code Mafia.",
+    title: `Session ${sessionId} | Code Mole`,
+    description: "Retro coding round interface for Code Mole.",
   };
 }
 

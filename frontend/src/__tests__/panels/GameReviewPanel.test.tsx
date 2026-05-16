@@ -9,6 +9,15 @@ vi.mock("@/lib/api", () => ({
 
 const mockGetReview = vi.mocked(api.getGameReview);
 
+const mockReview = {
+  players: [
+    { name: "Budi", role: "civilian", feedback: "Kamu berhasil menemukan impostor." },
+    { name: "Rani", role: "imposter", feedback: "Sabotase kamu ketahuan di ronde terakhir." },
+  ],
+  model: "llama3",
+  cached: false,
+};
+
 describe("GameReviewPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -19,45 +28,32 @@ describe("GameReviewPanel", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("shows loading skeletons when fetching", () => {
+  it("shows loading state when fetching", () => {
     mockGetReview.mockReturnValue(new Promise(() => {}));
 
     render(<GameReviewPanel sessionId="s1" phase="game_over" />);
-    expect(screen.getByText("AI Post-Game Review")).toBeInTheDocument();
+    expect(screen.getByText("Feedback Pemain")).toBeInTheDocument();
+    expect(screen.getByText("AI sedang menganalisis...")).toBeInTheDocument();
   });
 
-  it("displays review text on success", async () => {
-    mockGetReview.mockResolvedValue({
-      review: "Great game! Civilians found the imposter quickly.",
-      model: "llama3",
-      cached: false,
-    });
+  it("displays per-player feedback on success", async () => {
+    mockGetReview.mockResolvedValue(mockReview);
 
     render(<GameReviewPanel sessionId="s1" phase="game_over" />);
 
     await waitFor(() => {
-      expect(screen.getByText("Great game! Civilians found the imposter quickly.")).toBeInTheDocument();
+      expect(screen.getByText("Budi")).toBeInTheDocument();
+      expect(screen.getByText("Kamu berhasil menemukan impostor.")).toBeInTheDocument();
+      expect(screen.getByText("Rani")).toBeInTheDocument();
+      expect(screen.getByText("Sabotase kamu ketahuan di ronde terakhir.")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("llama3")).toBeInTheDocument();
-    expect(screen.getByText("Fresh")).toBeInTheDocument();
+    expect(screen.getByText("CIVILIAN")).toBeInTheDocument();
+    expect(screen.getByText("IMPOSTOR")).toBeInTheDocument();
+    expect(screen.getByText(/llama3/)).toBeInTheDocument();
   });
 
-  it("shows cached indicator", async () => {
-    mockGetReview.mockResolvedValue({
-      review: "Review text",
-      model: "llama3",
-      cached: true,
-    });
-
-    render(<GameReviewPanel sessionId="s1" phase="game_over" />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Cached")).toBeInTheDocument();
-    });
-  });
-
-  it("shows error with retry button", async () => {
+  it("shows error with retry button in Indonesian", async () => {
     mockGetReview.mockRejectedValue(new Error("Session not found."));
 
     render(<GameReviewPanel sessionId="s1" phase="game_over" />);
@@ -66,7 +62,7 @@ describe("GameReviewPanel", () => {
       expect(screen.getByText("Session not found.")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Retry")).toBeInTheDocument();
+    expect(screen.getByText("Coba Lagi")).toBeInTheDocument();
   });
 
   it("retries on retry button click", async () => {
@@ -78,11 +74,11 @@ describe("GameReviewPanel", () => {
       expect(screen.getByText("fail")).toBeInTheDocument();
     });
 
-    mockGetReview.mockResolvedValue({ review: "Success!", model: "llama3", cached: false });
-    fireEvent.click(screen.getByText("Retry"));
+    mockGetReview.mockResolvedValue(mockReview);
+    fireEvent.click(screen.getByText("Coba Lagi"));
 
     await waitFor(() => {
-      expect(screen.getByText("Success!")).toBeInTheDocument();
+      expect(screen.getByText("Budi")).toBeInTheDocument();
     });
   });
 });

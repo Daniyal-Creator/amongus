@@ -18,7 +18,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Code Mafia",
+  title: "Code Mole",
   description:
     "Retro social-deduction coding arena for lobby battles, sabotage rounds, and emergency code reviews.",
 };
