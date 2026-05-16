@@ -19,10 +19,17 @@ class CursorLabelWidget extends WidgetType {
 
   toDOM() {
     const el = document.createElement("span");
-    el.className = "cm-remoteCursorLabel";
-    el.textContent = this.name;
-    el.style.backgroundColor = this.color;
-    el.style.color = "#fff";
+    el.className = "cm-remoteCursor";
+    el.style.borderLeftColor = this.color;
+    el.style.color = this.color;
+
+    const label = document.createElement("span");
+    label.className = "cm-remoteCursorLabel";
+    label.textContent = this.name;
+    label.style.backgroundColor = this.color;
+    label.style.color = "#fff";
+    el.appendChild(label);
+
     return el;
   }
 
@@ -37,7 +44,21 @@ function buildDecorations(cursors: CursorPresence[], docLength: number): Decorat
   const ranges: ReturnType<Decoration["range"]>[] = [];
 
   for (const cursor of cursors) {
+    const anchor = Math.max(0, Math.min(cursor.anchor, docLength));
     const pos = Math.max(0, Math.min(cursor.head, docLength));
+    const selectionFrom = Math.min(anchor, pos);
+    const selectionTo = Math.max(anchor, pos);
+
+    if (selectionFrom < selectionTo) {
+      ranges.push(
+        Decoration.mark({
+          class: "cm-remoteSelection",
+          attributes: {
+            style: `background-color: ${cursor.color}33`,
+          },
+        }).range(selectionFrom, selectionTo),
+      );
+    }
 
     ranges.push(
       Decoration.widget({
@@ -50,7 +71,7 @@ function buildDecorations(cursors: CursorPresence[], docLength: number): Decorat
   ranges.sort((a, b) => a.from - b.from);
 
   try {
-    return Decoration.set(ranges);
+    return Decoration.set(ranges, true);
   } catch {
     return Decoration.none;
   }
