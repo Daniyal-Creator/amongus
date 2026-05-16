@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { SettingsPanel } from "@/components/ui/SettingsPanel";
 
 export function HomeClient() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export function HomeClient() {
     <main
       className="sky-stage flex items-center justify-center px-4 py-10 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
     >
+      <SettingsPanel />
       <div className="relative z-10 flex w-full max-w-3xl flex-col items-center">
         <div className="pixel-logo text-center">
           <p className="pixel-title text-4xl text-white [text-shadow:4px_4px_0_#2b4a1b] sm:text-6xl">CODE</p>

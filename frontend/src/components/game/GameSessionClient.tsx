@@ -20,6 +20,7 @@ import { useSounds } from "@/lib/sound-provider";
 import { useToast } from "@/lib/toast-provider";
 import confetti from "canvas-confetti";
 import { shouldRunFrame } from "@/lib/frame-throttle";
+import { deriveMatchAchievements } from "@/lib/achievements";
 
 const CodeEditor = dynamic(
   () => import("@/components/editor/CodeEditor").then((m) => m.CodeEditor),
@@ -343,6 +344,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
   const timeSeconds = parseInt(snapshot.timeRemaining.replace(/s$/, ""), 10);
   const displayTime = `${timeSeconds}s`;
   const timerIsLow = !isNaN(timeSeconds) && timeSeconds <= 5;
+  const matchAchievements = deriveMatchAchievements(snapshot);
 
   function handlePrimaryAction() {
     if (isCivilian) {
@@ -361,7 +363,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
   return (
     <>
-      <main className="min-h-screen bg-[url('/background/nature_2/origbig.png')] bg-cover bg-center bg-no-repeat bg-fixed px-3 py-3 text-white sm:px-5">
+      <main className="theme-bg min-h-screen bg-cover bg-center bg-no-repeat bg-fixed px-3 py-3 text-white sm:px-5">
         <section className="mx-auto flex min-h-[calc(100vh-1.5rem)] xl:h-[calc(100vh-1.5rem)] max-w-[1800px] flex-col">
           {/* Header bar */}
           <div className="mb-4 grid grid-cols-1 md:grid-cols-3 items-center gap-4 px-6 py-4 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 shadow-lg relative">
@@ -593,7 +595,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[url('/background/nature_2/origbig.png')] bg-cover bg-center bg-no-repeat px-4 text-center before:absolute before:inset-0 before:bg-black/40 before:backdrop-blur-sm"
+          className="theme-bg fixed inset-0 z-50 flex items-center justify-center bg-cover bg-center bg-no-repeat px-4 text-center before:absolute before:inset-0 before:bg-black/40 before:backdrop-blur-sm"
         >
           <motion.div 
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -669,7 +671,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 1.05 }}
           transition={{ duration: 0.3 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[url('/background/nature_2/origbig.png')] bg-cover bg-center px-4 py-6 text-[#39404f] overflow-y-auto"
+          className="theme-bg fixed inset-0 z-50 flex items-center justify-center bg-cover bg-center px-4 py-6 text-[#39404f] overflow-y-auto"
         >
           {/* Dark overlay for focus */}
           <div className="absolute inset-0 bg-black/70 z-0" />
@@ -899,6 +901,33 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
                   </motion.div>
                 ))}
               </motion.div>
+
+              {matchAchievements.length > 0 ? (
+                <div className="relative z-10 mt-8 border-[4px] border-[#8b5a2b] bg-[#fff8ea] p-4 text-left shadow-[4px_4px_0_0_rgba(0,0,0,0.25)]">
+                  <div className="flex items-center justify-between gap-3 border-b-[3px] border-[#8b5a2b] pb-3">
+                    <p className="text-lg text-[#5c4427]">Achievement Earned</p>
+                    <span className="pixel-chip pixel-chip-orange text-[10px]">
+                      {matchAchievements.length} BADGES
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {matchAchievements.map((achievement) => (
+                      <div
+                        key={`${achievement.slug}-${achievement.description}`}
+                        className="border-[3px] border-[#8b5a2b] bg-[#ebdcb8] px-3 py-3 shadow-[inset_0_0_0_2px_#fff1c8]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl leading-none">{achievement.icon}</span>
+                          <p className="pixel-small font-bold text-[#39404f]">{achievement.title}</p>
+                        </div>
+                        <p className="pixel-small mt-2 text-[#5c4427]">
+                          {achievement.description}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {/* AI Post-Game Review */}
               <div className="mt-8">
