@@ -21,7 +21,9 @@ services:
     environment:
       PORT: 4000
       HOST: 0.0.0.0
+      APP_ENV: local
       DATABASE_URL: postgres://postgres:postgres@db:5432/amongus_coder
+      DATABASE_SSL: "false"
       CORS_ORIGIN: "*"
       # Ollama Cloud (gratis) — set OLLAMA_API_KEY di shell sebelum `docker compose up`.
       # Fallback ke Ollama lokal di host machine kalau OLLAMA_BASE_URL tidak di-override.

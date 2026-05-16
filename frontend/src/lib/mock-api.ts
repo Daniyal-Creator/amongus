@@ -15,6 +15,7 @@ import type {
 const STORE_KEY = "code-mafia:mock-store:v1";
 const CATEGORY_VOTE_DURATION_SECONDS = 10;
 const ROUND_DURATION_SECONDS = 120;
+const MIN_PLAYERS_TO_START = 4;
 const COLOR_PALETTE = ["#14f59b", "#ffd95a", "#6da8ff", "#ff688b", "#ff9f43"];
 const PLAYER_TITLES = [
   "Host / Frontend Fixer",
@@ -744,6 +745,20 @@ function appendChat(target: ChatMessage[], user: string, color: string, message:
   });
 }
 
+function assignRandomRoles(players: Player[]) {
+  const activePlayers = players.filter((player) => !player.status.includes("ejected"));
+  if (activePlayers.length === 0) {
+    return;
+  }
+
+  const imposter = activePlayers[Math.floor(Math.random() * activePlayers.length)];
+  for (const player of activePlayers) {
+    const isImposter = player.id === imposter.id;
+    player.role = isImposter ? "imposter" : "civilian";
+    player.status = isImposter ? "observing edge cases" : "reviewing helper signatures";
+  }
+}
+
 function resolveCategory(session: MockSessionRecord) {
   const ranked = Object.entries(
     Object.values(session.categoryVotes).reduce<Record<string, number>>((counts, slug) => {
@@ -764,11 +779,14 @@ function resolveCategory(session: MockSessionRecord) {
   session.challenge = clone(nextChallenge);
   session.editorContent = nextChallenge.editorContent;
   session.timeRemainingSeconds = ROUND_DURATION_SECONDS;
+  session.sabotageCharges = 5;
+  session.imposterTaskProgress = [];
+  assignRandomRoles(session.players);
   appendChat(
     session.chatMessages,
     "system",
     "#f0a92e",
-    `Category locked: ${winningSlug.toUpperCase()}. Round started.${candidates.length > 1 ? " Tie detected, challenge randomized." : ""}`,
+    `Category locked: ${winningSlug.toUpperCase()}. Round started. Roles randomized for this round.${candidates.length > 1 ? " Tie detected, challenge randomized." : ""}`,
   );
 }
 
@@ -882,12 +900,12 @@ function evaluateMockImposterTasks(
 function createSessionFromLobby(store: MockStore, lobby: MockLobbyRecord): MockSessionRecord {
   const sessionId = nextId(store, "session");
   const challenge = clone(CHALLENGES.oop);
-  const players: Player[] = lobby.players.map((player, index) => ({
+  const players: Player[] = lobby.players.map((player) => ({
     id: player.id,
     name: player.name,
     color: player.color,
-    role: index === lobby.players.length - 1 ? "imposter" : "civilian",
-    status: index === lobby.players.length - 1 ? "observing edge cases" : "reviewing helper signatures",
+    role: "civilian",
+    status: "waiting for role distribution",
   }));
 
   return {
@@ -1049,6 +1067,9 @@ export async function startMockLobby(code: string, playerId: string) {
     const host = lobby.players.find((player) => player.isHost);
     if (!host || host.id !== playerId) {
       throw new Error("Hanya host yang bisa memulai game.");
+    }
+    if (lobby.players.length < MIN_PLAYERS_TO_START) {
+      throw new Error(`Minimal ${MIN_PLAYERS_TO_START} pemain untuk memulai game production.`);
     }
     const allNonHostReady = lobby.players
       .filter((player) => !player.isHost)

@@ -24,6 +24,8 @@ type LobbyRoomClientProps = {
   code: string;
 };
 
+const MIN_PLAYERS_TO_START = 4;
+
 const PixelCopyIcon = () => (
   <svg
     width="24"
@@ -134,6 +136,8 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
     () => players.filter((player) => !player.isHost).every((player) => player.isReady),
     [players],
   );
+  const hasMinimumPlayers = players.length >= MIN_PLAYERS_TO_START;
+  const canStartGame = isHost && hasMinimumPlayers && allNonHostReady && !isBusy;
   const needsJoin = !currentUserId || !currentPlayer;
 
   async function refreshLobby() {
@@ -181,7 +185,7 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
   }
 
   async function handleStart() {
-    if (!isHost || !allNonHostReady) {
+    if (!isHost || !hasMinimumPlayers || !allNonHostReady) {
       return;
     }
 
@@ -430,7 +434,9 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
 
               <div className="mt-8 flex flex-col gap-4 border-t-4 border-[color:var(--brown-dark)] pt-6">
                 <p className="pixel-small text-center text-white/90">
-                  {allNonHostReady
+                  {!hasMinimumPlayers
+                    ? `Need ${MIN_PLAYERS_TO_START} players to start a production match.`
+                    : allNonHostReady
                     ? (
                       <span className="flex items-center justify-center gap-2">
                         <Sparkles className="w-4 h-4" /> All players ready. Host can start! <Sparkles className="w-4 h-4" />
@@ -453,9 +459,9 @@ export function LobbyRoomClient({ code }: LobbyRoomClientProps) {
                     <button
                       type="button"
                       onClick={handleStart}
-                      disabled={!allNonHostReady || isBusy}
+                      disabled={!canStartGame}
                       className={`pixel-button w-full sm:w-auto text-xl py-3 font-bold tracking-wider ${
-                        allNonHostReady
+                        canStartGame
                           ? "pixel-button-primary motion-safe:animate-bounce shadow-[0_0_15px_rgba(240,169,46,0.6)]"
                           : "opacity-60 cursor-not-allowed bg-[#7a6f5e] shadow-none border-[#4f4435]"
                       }`}

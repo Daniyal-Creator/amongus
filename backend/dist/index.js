@@ -28,6 +28,7 @@ const ROUND_DURATION_SECONDS = 120;
 const CATEGORY_VOTE_DURATION_SECONDS = 10;
 const CHAT_RATE_LIMIT_WINDOW_MS = 10_000;
 const CHAT_RATE_LIMIT_MAX = 10;
+const MIN_PLAYERS_TO_START = 4;
 /* ────────────── Chat rate limiter (delegated to services/rate-limit) ────────────── */
 async function checkChatRateLimit(playerId) {
     const result = await chatRateLimit(playerId);
@@ -348,6 +349,34 @@ async function resolveChallengeForCategory(categorySlug, roundNumber) {
     `, [categorySlug]);
     return fallback.rows[0] ?? null;
 }
+async function assignRandomRoundRoles(sessionId) {
+    const playersResult = await query(`
+      SELECT sp.player_id
+      FROM session_players sp
+      JOIN lobby_players lp ON lp.id = sp.player_id
+      WHERE sp.session_id = $1
+        AND sp.status NOT IN ('left game', 'ejected after meeting')
+      ORDER BY lp.created_at ASC
+    `, [sessionId]);
+    const activePlayerIds = playersResult.rows.map((player) => player.player_id);
+    if (activePlayerIds.length === 0) {
+        return null;
+    }
+    const imposterId = activePlayerIds[randomInt(0, activePlayerIds.length)];
+    await query(`
+      UPDATE session_players
+      SET role = CASE WHEN player_id = $2 THEN 'imposter' ELSE 'civilian' END,
+          status = CASE
+            WHEN player_id = $2 THEN 'observing edge cases'
+            ELSE 'reviewing helper signatures'
+          END,
+          disconnected_at = NULL,
+          last_seen_at = NOW()
+      WHERE session_id = $1
+        AND player_id = ANY($3::text[])
+    `, [sessionId, imposterId, activePlayerIds]);
+    return imposterId;
+}
 /* ────────────── Realtime ────────────── */
 function registerSocket(collection, key, socket) {
     const current = collection.get(key) ?? new Set();
@@ -523,7 +552,9 @@ async function resolveCategoryVote(sessionId) {
           challenge_id = $3,
           phase = 'playing',
           editor_content = $4,
-          time_remaining_seconds = $5
+          time_remaining_seconds = $5,
+          sabotage_charges = 5,
+          imposter_task_progress = '[]'::jsonb
       WHERE id = $1 AND phase = 'category'
     `, [
         sessionId,
@@ -532,8 +563,9 @@ async function resolveCategoryVote(sessionId) {
         editorLinesToContent(nextChallenge.editor_lines),
         ROUND_DURATION_SECONDS,
     ]);
+    await assignRandomRoundRoles(sessionId);
     const tieNote = tiedSlugs.length > 1 ? " Tie detected, challenge randomized." : "";
-    await appendSystemMessage(sessionId, `Category locked: ${selectedCategorySlug.toUpperCase()}. Round ${session.round} started.${tieNote}`);
+    await appendSystemMessage(sessionId, `Category locked: ${selectedCategorySlug.toUpperCase()}. Round ${session.round} started. Roles randomized for this round.${tieNote}`);
     await publishSession(sessionId);
 }
 /**
@@ -1131,9 +1163,9 @@ app.post("/api/lobbies/:code/start", {
         reply.code(403);
         return { message: "Hanya host yang bisa memulai game." };
     }
-    if (lobby.players.length < 1) {
+    if (lobby.players.length < MIN_PLAYERS_TO_START) {
         reply.code(400);
-        return { message: "Minimal 1 pemain untuk memulai." };
+        return { message: `Minimal ${MIN_PLAYERS_TO_START} pemain untuk memulai game production.` };
     }
     const allNonHostReady = lobby.players
         .filter((player) => !player.isHost)
@@ -1161,7 +1193,6 @@ app.post("/api/lobbies/:code/start", {
         return { message: "Challenge untuk kategori ini belum tersedia." };
     }
     const sessionId = createId();
-    const imposterIndex = randomInt(0, lobby.players.length);
     const initialEditorContent = editorLinesToContent(challenge.editor_lines);
     // Determine max rounds based on available challenges for the category
     const maxRoundsResult = await query(`
@@ -1187,13 +1218,11 @@ app.post("/api/lobbies/:code/start", {
             CATEGORY_VOTE_DURATION_SECONDS,
             initialEditorContent,
         ]);
-        for (const [index, player] of lobby.players.entries()) {
-            const role = index === imposterIndex ? "imposter" : "civilian";
-            const status = role === "imposter" ? "observing edge cases" : "reviewing helper signatures";
+        for (const player of lobby.players) {
             await client.query(`
             INSERT INTO session_players (session_id, player_id, role, status)
             VALUES ($1, $2, $3, $4)
-          `, [sessionId, player.id, role, status]);
+          `, [sessionId, player.id, "civilian", "waiting for role distribution"]);
         }
         for (const message of challenge.chat_messages) {
             await client.query(`

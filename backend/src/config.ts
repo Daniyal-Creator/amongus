@@ -11,10 +11,25 @@ function parseCorsOrigin(value: string | undefined): string | string[] | boolean
   return parts;
 }
 
+function parseBoolean(value: string | undefined) {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on", "require", "required"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off", "disable", "disabled"].includes(normalized)) {
+    return false;
+  }
+  return null;
+}
+
 export const config = {
   port: Number(process.env.PORT ?? DEFAULT_PORT),
   host: process.env.HOST ?? DEFAULT_HOST,
+  appEnv: process.env.APP_ENV ?? "local",
   databaseUrl: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
+  databaseSsl: parseBoolean(process.env.DATABASE_SSL),
+  railwayEnvironment: process.env.RAILWAY_ENVIRONMENT ?? "",
   corsOrigin: parseCorsOrigin(process.env.CORS_ORIGIN),
   mockMode: (process.env.MOCK_MODE ?? "").toUpperCase() === "ENABLE",
   redisUrl: process.env.REDIS_URL ?? "",
