@@ -3,11 +3,19 @@ const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_DATABASE_URL =
   "postgres://postgres:postgres@localhost:5432/amongus_coder";
 
+function parseCorsOrigin(value: string | undefined): string | string[] | boolean {
+  if (!value) return true;
+  const parts = value.split(",").map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return true;
+  if (parts.length === 1) return parts[0];
+  return parts;
+}
+
 export const config = {
   port: Number(process.env.PORT ?? DEFAULT_PORT),
   host: process.env.HOST ?? DEFAULT_HOST,
   databaseUrl: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
-  corsOrigin: process.env.CORS_ORIGIN ?? true,
+  corsOrigin: parseCorsOrigin(process.env.CORS_ORIGIN),
   mockMode: (process.env.MOCK_MODE ?? "").toUpperCase() === "ENABLE",
   redisUrl: process.env.REDIS_URL ?? "",
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",

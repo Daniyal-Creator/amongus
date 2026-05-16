@@ -9,8 +9,13 @@ import {
   ACHIEVEMENT_SEEDS,
 } from "./seed-data.js";
 
+const isLocalDb =
+  config.databaseUrl.includes("localhost") ||
+  config.databaseUrl.includes("127.0.0.1");
+
 export const pool = new Pool({
   connectionString: config.databaseUrl,
+  ssl: isLocalDb ? false : { rejectUnauthorized: false },
 });
 
 export async function query<T extends QueryResultRow = QueryResultRow>(
