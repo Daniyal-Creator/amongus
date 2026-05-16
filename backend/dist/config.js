@@ -1,11 +1,36 @@
 const DEFAULT_PORT = 4000;
 const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_DATABASE_URL = "postgres://postgres:postgres@localhost:5432/amongus_coder";
+function parseCorsOrigin(value) {
+    if (!value)
+        return true;
+    const parts = value.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length === 0)
+        return true;
+    if (parts.length === 1)
+        return parts[0];
+    return parts;
+}
+function parseBoolean(value) {
+    if (!value)
+        return null;
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on", "require", "required"].includes(normalized)) {
+        return true;
+    }
+    if (["0", "false", "no", "off", "disable", "disabled"].includes(normalized)) {
+        return false;
+    }
+    return null;
+}
 export const config = {
     port: Number(process.env.PORT ?? DEFAULT_PORT),
     host: process.env.HOST ?? DEFAULT_HOST,
+    appEnv: process.env.APP_ENV ?? "local",
     databaseUrl: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
-    corsOrigin: process.env.CORS_ORIGIN ?? true,
+    databaseSsl: parseBoolean(process.env.DATABASE_SSL),
+    railwayEnvironment: process.env.RAILWAY_ENVIRONMENT ?? "",
+    corsOrigin: parseCorsOrigin(process.env.CORS_ORIGIN),
     mockMode: (process.env.MOCK_MODE ?? "").toUpperCase() === "ENABLE",
     redisUrl: process.env.REDIS_URL ?? "",
     ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",

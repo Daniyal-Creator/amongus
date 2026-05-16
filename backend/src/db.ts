@@ -9,13 +9,32 @@ import {
   ACHIEVEMENT_SEEDS,
 } from "./seed-data.js";
 
-const isLocalDb =
-  config.databaseUrl.includes("localhost") ||
-  config.databaseUrl.includes("127.0.0.1");
+function isLocalDatabaseUrl(databaseUrl: string) {
+  try {
+    const { hostname } = new URL(databaseUrl);
+    return ["localhost", "127.0.0.1", "db"].includes(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function shouldUseDatabaseSsl() {
+  if (config.databaseSsl !== null) {
+    return config.databaseSsl;
+  }
+
+  if (config.appEnv === "production" || config.railwayEnvironment) {
+    return true;
+  }
+
+  return !isLocalDatabaseUrl(config.databaseUrl);
+}
+
+const useDatabaseSsl = shouldUseDatabaseSsl();
 
 export const pool = new Pool({
   connectionString: config.databaseUrl,
-  ssl: isLocalDb ? false : { rejectUnauthorized: false },
+  ssl: useDatabaseSsl ? { rejectUnauthorized: false } : false,
 });
 
 export async function query<T extends QueryResultRow = QueryResultRow>(
