@@ -802,7 +802,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
 
             {/* Right side: Discussion Chat */}
             <div className="flex flex-col gap-6 min-h-0">
-              <div className="flex-1 bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[6px_6px_0_0_rgba(0,0,0,0.4)] flex flex-col overflow-hidden min-h-[300px]">
+              <div className="flex-1 bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[6px_6px_0_0_rgba(0,0,0,0.4)] flex flex-col overflow-hidden min-h-0">
                 <div className="p-3 border-b-[4px] border-[#8b5a2b] bg-[#8a6b45] flex items-center justify-between shadow-[inset_0_-2px_0_rgba(0,0,0,0.2)]">
                   <p className="pixel-small text-white drop-shadow-md">DISCUSSION</p>
                   <span className="px-2 py-1 bg-[#5c4427] text-[#fff8ea] border-[2px] border-[#3e2723] text-[10px] pixel-small">{snapshot.chatMessages.length} msgs</span>
