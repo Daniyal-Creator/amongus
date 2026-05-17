@@ -736,12 +736,12 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 1.05 }}
           transition={{ duration: 0.3 }}
-          className="theme-bg fixed inset-0 z-50 flex items-center justify-center bg-cover bg-center px-4 py-6 text-[#39404f] overflow-y-auto"
+          className="theme-bg fixed inset-0 z-50 flex items-center justify-center bg-cover bg-center px-4 py-6 text-[#39404f] overflow-hidden h-screen"
         >
           {/* Dark overlay for focus */}
           <div className="absolute inset-0 bg-black/70 z-0" />
           
-          <div className="w-full max-w-[1200px] mx-auto grid grid-cols-1 xl:grid-cols-[1fr_350px] gap-6 z-10">
+          <div className="w-full max-w-[1200px] mx-auto grid grid-cols-1 xl:grid-cols-[1fr_350px] gap-6 z-10 h-full">
             {/* Left/Main: Vote Panel */}
             <div className="flex flex-col bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[8px_8px_0_0_rgba(0,0,0,0.5)] p-6 relative overflow-hidden" style={{ imageRendering: "pixelated" }}>
                <div className="text-center mb-8 bg-[#8b5a2b] border-[4px] border-[#5c3a21] py-4 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
