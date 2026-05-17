@@ -342,7 +342,7 @@ select {
   scrollbar-color: #8a6b45 #e6c9a8;
 }
 .meeting-chat-scroll::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 .meeting-chat-scroll::-webkit-scrollbar-track {
   background: #e6c9a8;
