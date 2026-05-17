@@ -743,7 +743,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
           
           <div className="w-full max-w-[1200px] mx-auto grid grid-cols-1 xl:grid-cols-[1fr_350px] gap-6 z-10 h-full">
             {/* Left/Main: Vote Panel */}
-            <div className="flex flex-col bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[8px_8px_0_0_rgba(0,0,0,0.5)] p-6 relative overflow-hidden" style={{ imageRendering: "pixelated" }}>
+            <div className="flex flex-col bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[8px_8px_0_0_rgba(0,0,0,0.5)] p-6 relative overflow-hidden min-h-0" style={{ imageRendering: "pixelated" }}>
                <div className="text-center mb-8 bg-[#8b5a2b] border-[4px] border-[#5c3a21] py-4 shadow-[inset_0_0_10px_rgba(0,0,0,0.5)]">
                  <h1 className="pixel-title text-4xl md:text-5xl text-[#ffcf40] drop-shadow-[2px_2px_0_#000]">EMERGENCY MEETING</h1>
                  <p className="mt-2 text-white/90 pixel-small">Called by <span className="text-[#ffcf40]">{snapshot.meeting.startedBy ?? "unknown"}</span></p>
@@ -801,7 +801,7 @@ export function GameSessionClient({ sessionId }: GameSessionClientProps) {
             </div>
 
             {/* Right side: Discussion Chat */}
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-6 min-h-0">
               <div className="flex-1 bg-[#d2b48c] border-[6px] border-[#8b5a2b] shadow-[6px_6px_0_0_rgba(0,0,0,0.4)] flex flex-col overflow-hidden min-h-[300px]">
                 <div className="p-3 border-b-[4px] border-[#8b5a2b] bg-[#8a6b45] flex items-center justify-between shadow-[inset_0_-2px_0_rgba(0,0,0,0.2)]">
                   <p className="pixel-small text-white drop-shadow-md">DISCUSSION</p>
